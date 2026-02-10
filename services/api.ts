@@ -158,6 +158,11 @@ class ApiService {
     getUserSuggestions() {
         return this.get('/api/users/suggestions');
     }
+
+    // Push Notifications
+    updatePushToken(pushToken: string) {
+        return this.post('/api/users/push-token', { pushToken });
+    }
 }
 
 // Export singleton instance

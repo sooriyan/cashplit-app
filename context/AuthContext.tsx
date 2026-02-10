@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { registerForPushNotificationsAsync } from '../services/notifications';
+import * as Notifications from 'expo-notifications';
 
 interface User {
     id: string;
@@ -118,6 +120,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Sign out error:', error);
         }
     };
+
+    // Configure notification behavior
+    useEffect(() => {
+        Notifications.setNotificationHandler({
+            handleNotification: async () => ({
+                shouldShowAlert: true,
+                shouldPlaySound: true,
+                shouldSetBadge: false,
+                shouldShowBanner: true,
+                shouldShowList: true,
+            }),
+        });
+    }, []);
+
+    // Register push token whenever user changes
+    useEffect(() => {
+        if (user) {
+            registerForPushNotificationsAsync().then(token => {
+                if (token) {
+                    api.updatePushToken(token).catch(err => {
+                        console.error('Failed to update push token on server:', err);
+                    });
+                }
+            });
+        }
+    }, [user]);
 
     return (
         <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut }}>
