@@ -46,7 +46,13 @@ export default function SignUpScreen() {
         setLoading(true);
         setError('');
 
-        const result = await signUp({ name, email, password, phone, upiId });
+        const result = await signUp({ 
+            name, 
+            email: email.toLowerCase().trim(), 
+            password, 
+            phone, 
+            upiId 
+        });
 
         if (result.success) {
             router.replace('/(tabs)');

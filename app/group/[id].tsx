@@ -302,6 +302,23 @@ export default function GroupDetailsScreen() {
                                                 : 'All settled up'}
                                     </Text>
                                 </View>
+                                {(() => {
+                                    const outgoingTx = transactions.find(tx => tx.from?._id === user?.id && tx.to?._id === member._id);
+                                    if (!isCurrentUser && outgoingTx) {
+                                        return (
+                                            <TouchableOpacity
+                                                style={styles.payButton}
+                                                onPress={() => {
+                                                    setSelectedTx(outgoingTx);
+                                                    setShowPayModal(true);
+                                                }}
+                                            >
+                                                <Text style={styles.payButtonText}>Pay Now</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    }
+                                    return null;
+                                })()}
                             </View>
                         );
                     })}
