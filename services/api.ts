@@ -136,6 +136,10 @@ class ApiService {
         return this.post(`/api/groups/${groupId}/members`, { email });
     }
 
+    addMembers(groupId: string, emails: string[]) {
+        return this.post(`/api/groups/${groupId}/members`, { emails });
+    }
+
     // Settlements
     markSettlementPaid(groupId: string, data: { payeeId: string; amount: number }) {
         return this.post(`/api/groups/${groupId}/settlements`, data);
