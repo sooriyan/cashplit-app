@@ -66,6 +66,8 @@ export default function GroupDetailsScreen() {
     const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
 
     const fetchData = async () => {
+        setLoading(true);
+        setGroup(null);
         try {
             const [groupRes, balanceRes] = await Promise.all([
                 api.getGroup(id!),
@@ -84,7 +86,11 @@ export default function GroupDetailsScreen() {
 
     useFocusEffect(
         useCallback(() => {
-            if (id) fetchData();
+            if (id) {
+                setLoading(true);
+                setGroup(null);
+                fetchData();
+            }
         }, [id])
     );
 
@@ -148,24 +154,67 @@ export default function GroupDetailsScreen() {
         router.push({ pathname: '/group/add-expense', params: { groupId: id, expenseId } });
     };
 
-    if (loading) {
+    if (loading || !group) {
         return (
             <LinearGradient
                 colors={[Colors.dark.backgroundGradientStart, Colors.dark.backgroundGradientEnd]}
-                style={styles.loadingContainer}
+                style={styles.container}
             >
-                <ActivityIndicator size="large" color={Colors.dark.primary} />
-            </LinearGradient>
-        );
-    }
+                <Stack.Screen
+                    options={{
+                        headerTitle: 'Loading...',
+                        headerShadowVisible: false,
+                        headerStyle: { backgroundColor: Colors.dark.background },
+                        headerTransparent: false,
+                        headerTintColor: Colors.dark.text,
+                        headerLeft: () => (
+                            <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+                                <Ionicons name="arrow-back" size={24} color={Colors.dark.text} />
+                            </TouchableOpacity>
+                        ),
+                    }}
+                />
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {/* Skeleton Actions */}
+                    <View style={styles.actionsRow}>
+                        <View style={[styles.skeleton, { width: 120, height: 40, borderRadius: 10 }]} />
+                        <View style={[styles.skeleton, { width: 80, height: 40, borderRadius: 10 }]} />
+                    </View>
 
-    if (!group) {
-        return (
-            <LinearGradient
-                colors={[Colors.dark.backgroundGradientStart, Colors.dark.backgroundGradientEnd]}
-                style={styles.loadingContainer}
-            >
-                <Text style={styles.errorText}>Group not found</Text>
+                    {/* Skeleton Summary */}
+                    <View style={{ flexDirection: 'row', gap: 16, marginBottom: 24 }}>
+                        <View style={[styles.skeleton, { width: 200, height: 120, borderRadius: 20 }]} />
+                        <View style={[styles.skeleton, { width: 200, height: 120, borderRadius: 20 }]} />
+                    </View>
+
+                    {/* Skeleton Section */}
+                    <View style={styles.sectionHeader}>
+                        <View style={[styles.skeleton, { width: 150, height: 24, borderRadius: 4 }]} />
+                    </View>
+                    {[1, 2].map(i => (
+                        <View key={i} style={[styles.memberItem, { opacity: 0.5 }]}>
+                            <View style={[styles.skeleton, { width: 40, height: 40, borderRadius: 20 }]} />
+                            <View style={[styles.memberInfo, { gap: 8 }]}>
+                                <View style={[styles.skeleton, { width: '60%', height: 16, borderRadius: 4 }]} />
+                                <View style={[styles.skeleton, { width: '40%', height: 14, borderRadius: 4 }]} />
+                            </View>
+                        </View>
+                    ))}
+
+                    <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+                        <View style={[styles.skeleton, { width: 120, height: 24, borderRadius: 4 }]} />
+                    </View>
+                    {[1, 2, 3].map(i => (
+                        <View key={i} style={[styles.expenseItem, { opacity: 0.5 }]}>
+                            <View style={[styles.skeleton, { width: 40, height: 40, borderRadius: 20 }]} />
+                            <View style={[styles.expenseInfo, { gap: 8 }]}>
+                                <View style={[styles.skeleton, { width: '70%', height: 16, borderRadius: 4 }]} />
+                                <View style={[styles.skeleton, { width: '30%', height: 12, borderRadius: 4 }]} />
+                            </View>
+                            <View style={[styles.skeleton, { width: 60, height: 20, borderRadius: 4 }]} />
+                        </View>
+                    ))}
+                </ScrollView>
             </LinearGradient>
         );
     }
@@ -504,6 +553,9 @@ export default function GroupDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
+    skeleton: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    },
     container: {
         flex: 1,
     },
