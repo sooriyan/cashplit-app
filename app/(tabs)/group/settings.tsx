@@ -14,8 +14,9 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { Avatar } from '../../components/Avatar';
-import api from '../../services/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar } from '../../../components/Avatar';
+import api from '../../../services/api';
 
 interface Member {
     _id: string;
@@ -32,6 +33,7 @@ interface Group {
 
 export default function GroupSettingsScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
+    const insets = useSafeAreaInsets();
     const [group, setGroup] = useState<Group | null>(null);
     const [loading, setLoading] = useState(true);
     const [inviteEmail, setInviteEmail] = useState('');
@@ -111,9 +113,21 @@ export default function GroupSettingsScreen() {
             colors={[Colors.dark.backgroundGradientStart, Colors.dark.backgroundGradientEnd]}
             style={styles.container}
         >
-            <Stack.Screen options={{ title: 'Group Settings' }} />
+            <Stack.Screen
+                options={{
+                    headerTitle: 'Group Settings',
+                    headerShadowVisible: false,
+                    headerStyle: { backgroundColor: Colors.dark.background },
+                    headerTintColor: Colors.dark.text,
+                    headerLeft: () => (
+                        <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+                            <Ionicons name="arrow-back" size={24} color={Colors.dark.text} />
+                        </TouchableOpacity>
+                    ),
+                }}
+            />
 
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}>
                 <View style={styles.header}>
                     <Avatar name={group.name} size={80} fontSize={32} rounded={true} />
                     <Text style={styles.groupName}>{group.name}</Text>

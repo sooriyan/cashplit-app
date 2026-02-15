@@ -17,9 +17,10 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { Avatar } from '../../components/Avatar';
-import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar } from '../../../components/Avatar';
+import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
 
 interface Member {
     _id: string;
@@ -53,6 +54,7 @@ interface Group {
 export default function GroupDetailsScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
+    const insets = useSafeAreaInsets();
     const [group, setGroup] = useState<Group | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [balances, setBalances] = useState<any[]>([]);
@@ -195,6 +197,11 @@ export default function GroupDetailsScreen() {
                     headerStyle: { backgroundColor: Colors.dark.background },
                     headerTransparent: false,
                     headerTintColor: Colors.dark.text,
+                    headerLeft: () => (
+                        <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+                            <Ionicons name="arrow-back" size={24} color={Colors.dark.text} />
+                        </TouchableOpacity>
+                    ),
                     headerRight: () => (
                         <TouchableOpacity
                             onPress={() => router.push({ pathname: '/group/settings', params: { id: group._id } })}
@@ -206,7 +213,7 @@ export default function GroupDetailsScreen() {
                 }}
             />
             <ScrollView
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
@@ -276,88 +283,79 @@ export default function GroupDetailsScreen() {
                     </View>
                 </ScrollView>
 
-                {/* Member Balances */}
+                {/* Your Balances */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Ionicons name="people" size={20} color={Colors.dark.primary} />
-                        <Text style={styles.sectionTitle}>Member Balances</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                            <Ionicons name="people" size={20} color={Colors.dark.primary} />
+                            <Text style={styles.sectionTitle}>Your Balances</Text>
+                        </View>
                     </View>
-                    {enrichedBalances.map((member) => {
-                        const isCurrentUser = member._id === user?.id;
-                        const displayName = isCurrentUser ? 'You' : member.name;
+
+                    {(() => {
+                        const myOutgoing = transactions.filter(tx => tx.from?._id === user?.id);
+                        const myIncoming = transactions.filter(tx => tx.to?._id === user?.id);
 
                         return (
-                            <View key={member._id} style={styles.memberItem}>
-                                <Avatar name={member.name} size={40} fontSize={16} rounded={true} />
-                                <View style={styles.memberInfo}>
-                                    <Text style={styles.memberName}>{displayName}</Text>
-                                    <Text style={[
-                                        styles.memberBalance,
-                                        { color: member.balance > 0 ? Colors.dark.primary : member.balance < 0 ? Colors.dark.danger : Colors.dark.textMuted }
-                                    ]}>
-                                        {member.balance > 0
-                                            ? `${isCurrentUser ? 'You are' : 'Is'} owed ₹${member.balance.toFixed(2)}`
-                                            : member.balance < 0
-                                                ? `${isCurrentUser ? 'You owe' : 'Owes'} ₹${Math.abs(member.balance).toFixed(2)}`
-                                                : 'All settled up'}
-                                    </Text>
-                                </View>
-                                {(() => {
-                                    const outgoingTx = transactions.find(tx => tx.from?._id === user?.id && tx.to?._id === member._id);
-                                    if (!isCurrentUser && outgoingTx) {
-                                        return (
+                            <>
+                                {/* What you owe */}
+                                {myOutgoing.length > 0 ? (
+                                    myOutgoing.map((tx, idx) => (
+                                        <View key={`owe-${idx}`} style={styles.memberItem}>
+                                            <Avatar name={tx.to?.name || 'Unknown'} size={40} fontSize={16} rounded={true} />
+                                            <View style={styles.memberInfo}>
+                                                <Text style={styles.memberName}>You owe {tx.to?.name}</Text>
+                                                <Text style={[styles.memberBalance, { color: Colors.dark.danger }]}>
+                                                    ₹{tx.amount.toFixed(2)}
+                                                </Text>
+                                            </View>
                                             <TouchableOpacity
                                                 style={styles.payButton}
                                                 onPress={() => {
-                                                    setSelectedTx(outgoingTx);
+                                                    setSelectedTx(tx);
                                                     setShowPayModal(true);
                                                 }}
                                             >
                                                 <Text style={styles.payButtonText}>Pay Now</Text>
                                             </TouchableOpacity>
-                                        );
-                                    }
-                                    return null;
-                                })()}
-                            </View>
+                                        </View>
+                                    ))
+                                ) : null}
+
+                                {/* What you are owed */}
+                                {myIncoming.length > 0 ? (
+                                    myIncoming.map((tx, idx) => (
+                                        <View key={`owed-${idx}`} style={styles.memberItem}>
+                                            <Avatar name={tx.from?.name || 'Unknown'} size={40} fontSize={16} rounded={true} />
+                                            <View style={styles.memberInfo}>
+                                                <Text style={styles.memberName}>{tx.from?.name} owes you</Text>
+                                                <Text style={[styles.memberBalance, { color: Colors.dark.primary }]}>
+                                                    ₹{tx.amount.toFixed(2)}
+                                                </Text>
+                                            </View>
+                                            {tx.from?.upiId && (
+                                                <TouchableOpacity
+                                                    style={[styles.payButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.dark.primary }]}
+                                                    onPress={() => {
+                                                        Clipboard.setStringAsync(tx.from?.upiId || '');
+                                                        Alert.alert('Copied!', 'UPI ID copied to clipboard');
+                                                    }}
+                                                >
+                                                    <Text style={[styles.payButtonText, { color: Colors.dark.primary }]}>Copy UPI</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    ))
+                                ) : null}
+
+                                {myOutgoing.length === 0 && myIncoming.length === 0 && (
+                                    <Text style={styles.noExpenses}>No pending balances for you</Text>
+                                )}
+                            </>
                         );
-                    })}
+                    })()}
                 </View>
 
-                {/* Settle Up - Only show if current user owes money */}
-                {transactions.some(tx => tx.from?._id === user?.id) && (
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Ionicons name="wallet" size={20} color={Colors.dark.primary} />
-                            <Text style={styles.sectionTitle}>Settle Up</Text>
-                        </View>
-                        {transactions.filter(tx => tx.from?._id === user?.id).map((tx, idx) => {
-                            const toName = tx.to?._id === user?.id ? 'You' : tx.to?.name || 'Unknown';
-
-                            return (
-                                <View key={idx} style={styles.settlementItem}>
-                                    <View style={styles.settlementInfo}>
-                                        <Text style={styles.settlementText}>
-                                            <Text style={{ color: Colors.dark.danger }}>You</Text>
-                                            <Text style={{ color: Colors.dark.textSecondary }}> → </Text>
-                                            <Text style={{ color: Colors.dark.primary }}>{toName}</Text>
-                                        </Text>
-                                        <Text style={styles.settlementAmount}>₹{tx.amount.toFixed(2)}</Text>
-                                    </View>
-                                    <TouchableOpacity
-                                        style={styles.payButton}
-                                        onPress={() => {
-                                            setSelectedTx(tx);
-                                            setShowPayModal(true);
-                                        }}
-                                    >
-                                        <Text style={styles.payButtonText}>Pay Now</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            );
-                        })}
-                    </View>
-                )}
 
                 {/* Recent Expenses */}
                 <View style={styles.section}>
@@ -520,7 +518,7 @@ const styles = StyleSheet.create({
     scrollContent: {
         padding: 16,
         paddingTop: 20, // Reduced padding since header is no longer transparent
-        paddingBottom: 100,
+        paddingBottom: 40,
     },
     summaryScroll: {
         paddingRight: 16,
@@ -612,6 +610,22 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: Colors.dark.text,
+    },
+    toggleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.2)',
+    },
+    toggleLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.dark.primary,
     },
     memberItem: {
         flexDirection: 'row',

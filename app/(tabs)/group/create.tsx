@@ -8,10 +8,10 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import api from '../../services/api';
+import api from '../../../services/api';
 import { Colors } from '@/constants/Colors';
 
 export default function CreateGroupScreen() {
@@ -41,6 +41,19 @@ export default function CreateGroupScreen() {
             colors={[Colors.dark.backgroundGradientStart, Colors.dark.backgroundGradientEnd]}
             style={styles.container}
         >
+            <Stack.Screen
+                options={{
+                    headerTitle: 'Create Group',
+                    headerShadowVisible: false,
+                    headerStyle: { backgroundColor: Colors.dark.background },
+                    headerTintColor: Colors.dark.text,
+                    headerLeft: () => (
+                        <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+                            <Ionicons name="arrow-back" size={24} color={Colors.dark.text} />
+                        </TouchableOpacity>
+                    ),
+                }}
+            />
             {/* Background glow */}
             <View style={styles.glowContainer}>
                 <View style={styles.glow} />

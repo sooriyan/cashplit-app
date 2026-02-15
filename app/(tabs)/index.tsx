@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../components/Avatar';
 import api from '../../services/api';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -32,6 +33,7 @@ interface GroupBalance {
 export default function DashboardScreen() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -226,7 +228,7 @@ export default function DashboardScreen() {
         keyExtractor={(item) => item._id}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 40 + insets.bottom }]}
         numColumns={1}
         refreshControl={
           <RefreshControl
@@ -258,7 +260,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   header: {
-    marginBottom: 20,
+    marginBottom: 0,
   },
   titleRow: {
     flexDirection: 'row',
@@ -309,7 +311,7 @@ const styles = StyleSheet.create({
   },
   horizontalScrollView: {
     marginHorizontal: -16,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   horizontalScrollContent: {
     paddingHorizontal: 8,
@@ -349,7 +351,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   groupCard: {
     backgroundColor: 'rgba(18, 18, 18, 0.8)',

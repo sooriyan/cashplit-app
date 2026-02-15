@@ -13,9 +13,10 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { Avatar } from '../../components/Avatar';
-import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar } from '../../../components/Avatar';
+import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
 
 interface Expense {
     _id: string;
@@ -29,6 +30,7 @@ interface Expense {
 export default function AllExpensesScreen() {
     const { groupId } = useLocalSearchParams<{ groupId: string }>();
     const { user } = useAuth();
+    const insets = useSafeAreaInsets();
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -107,10 +109,15 @@ export default function AllExpensesScreen() {
                     headerShadowVisible: false,
                     headerStyle: { backgroundColor: Colors.dark.background },
                     headerTintColor: Colors.dark.text,
+                    headerLeft: () => (
+                        <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+                            <Ionicons name="arrow-back" size={24} color={Colors.dark.text} />
+                        </TouchableOpacity>
+                    ),
                 }}
             />
             <ScrollView
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}

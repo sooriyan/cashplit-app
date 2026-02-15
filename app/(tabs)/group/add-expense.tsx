@@ -15,9 +15,10 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { Avatar, getAvatarColor } from '../../components/Avatar';
-import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar, getAvatarColor } from '../../../components/Avatar';
+import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
 
 type SplitType = 'equal' | 'percentage';
 
@@ -30,6 +31,7 @@ interface Member {
 export default function AddExpenseScreen() {
     const { groupId, expenseId } = useLocalSearchParams<{ groupId: string; expenseId?: string }>();
     const { user } = useAuth();
+    const insets = useSafeAreaInsets();
 
     const [description, setDescription] = useState('');
     const [amount, setAmount] = useState('');
@@ -208,9 +210,14 @@ export default function AddExpenseScreen() {
                     headerShadowVisible: false,
                     headerStyle: { backgroundColor: Colors.dark.background },
                     headerTintColor: Colors.dark.text,
+                    headerLeft: () => (
+                        <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+                            <Ionicons name="arrow-back" size={24} color={Colors.dark.text} />
+                        </TouchableOpacity>
+                    ),
                 }}
             />
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}>
                 {/* Amount Display */}
                 <View style={styles.amountContainer}>
                     <Text style={styles.amountLabel}>Amount</Text>

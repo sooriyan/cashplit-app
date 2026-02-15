@@ -50,26 +50,6 @@ export default function RootLayout() {
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="group/[id]"
-              options={{
-                title: 'Group',
-                headerBackTitle: 'Back',
-              }}
-            />
-            <Stack.Screen
-              name="group/add-expense"
-              options={{
-                title: 'Add Expense',
-                presentation: 'modal',
-              }}
-            />
-            <Stack.Screen
-              name="group/create"
-              options={{
-                title: 'Create Group',
-              }}
-            />
             <Stack.Screen name="+not-found" />
           </Stack>
           <StatusBar style="light" />
