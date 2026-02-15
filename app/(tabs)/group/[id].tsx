@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -26,6 +26,7 @@ interface Member {
     _id: string;
     name: string;
     email: string;
+    phone?: string;
     upiId?: string;
 }
 
@@ -60,22 +61,29 @@ export default function GroupDetailsScreen() {
     const [balances, setBalances] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [inviteEmail, setInviteEmail] = useState('');
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showPayModal, setShowPayModal] = useState(false);
+    const [showMemberPicker, setShowMemberPicker] = useState(false);
     const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+    const [selectedMemberId, setSelectedMemberId] = useState<string | null>(user?.id || null);
+    const [suggestions, setSuggestions] = useState<Member[]>([]);
+    const [selectedInvites, setSelectedInvites] = useState<Member[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
         setGroup(null);
         try {
-            const [groupRes, balanceRes] = await Promise.all([
+            const [groupRes, balanceRes, suggestionsRes] = await Promise.all([
                 api.getGroup(id!),
                 api.getGroupBalances(id!),
+                api.getUserSuggestions(),
             ]);
             setGroup(groupRes.data);
             setTransactions(balanceRes.data.transactions || []);
             setBalances(balanceRes.data.balances || []);
+            console.log('Suggestions fetched:', suggestionsRes.data?.length || 0);
+            setSuggestions(suggestionsRes.data || []);
         } catch (err) {
             console.error('Failed to fetch group:', err);
         } finally {
@@ -100,18 +108,50 @@ export default function GroupDetailsScreen() {
     };
 
     const handleInvite = async () => {
-        if (!inviteEmail.trim()) return;
+        const emails = selectedInvites.map(s => s.email);
+
+        if (emails.length === 0) return;
 
         try {
-            await api.addMember(id!, inviteEmail);
-            Alert.alert('Success', 'Member added!');
-            setInviteEmail('');
+            await api.addMembers(id!, emails);
+            setSelectedInvites([]);
+            setSearchQuery('');
             setShowInviteModal(false);
             fetchData();
+            Alert.alert('Success', 'Invitations processed successfully');
         } catch (err: any) {
-            Alert.alert('Error', err.response?.data?.message || 'Failed to add member');
+            Alert.alert('Error', err.response?.data?.message || 'Failed to send invitations');
         }
     };
+
+    const toggleInvite = (member: Member) => {
+        if (selectedInvites.some(s => s._id === member._id)) {
+            setSelectedInvites(selectedInvites.filter(s => s._id !== member._id));
+        } else {
+            setSelectedInvites([...selectedInvites, member]);
+        }
+    };
+
+    const filteredSuggestions = suggestions.filter(s => {
+        if (!group) return false;
+
+        // Safety check for required fields
+        if (!s.email) return false;
+
+        const isAlreadyMember = group.members.some(m => m.email === s.email);
+        const filtered = !isAlreadyMember;
+
+        if (searchQuery.length === 0) return filtered;
+
+        const query = searchQuery.toLowerCase();
+        return (
+            (s.name && s.name.toLowerCase().includes(query)) ||
+            (s.email && s.email.toLowerCase().includes(query)) ||
+            (s.phone && s.phone.includes(query))
+        );
+    });
+
+    console.log('Filtered suggestions:', filteredSuggestions.length, 'query:', searchQuery);
 
     const handleMarkAsPaid = async () => {
         if (!selectedTx) return;
@@ -332,57 +372,128 @@ export default function GroupDetailsScreen() {
                     </View>
                 </ScrollView>
 
-                {/* Your Balances */}
+                {/* Balances Section */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                             <Ionicons name="people" size={20} color={Colors.dark.primary} />
-                            <Text style={styles.sectionTitle}>Your Balances</Text>
+                            <Text style={styles.sectionTitle}>Balances</Text>
                         </View>
+
+                        {/* Member Picker as Badge */}
+                        {(() => {
+                            const selectedMember = group?.members.find(m => m._id === selectedMemberId);
+                            return (
+                                <>
+                                    <TouchableOpacity
+                                        style={styles.pickerBadge}
+                                        onPress={() => setShowMemberPicker(true)}
+                                    >
+                                        <Text style={styles.pickerBadgeText}>
+                                            {selectedMember?._id === user?.id ? 'Me' : selectedMember?.name}
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={14} color={Colors.dark.primary} />
+                                    </TouchableOpacity>
+
+                                    {/* Custom Themed Member Picker Modal */}
+                                    <Modal
+                                        visible={showMemberPicker}
+                                        transparent={true}
+                                        animationType="fade"
+                                        onRequestClose={() => setShowMemberPicker(false)}
+                                    >
+                                        <TouchableOpacity
+                                            style={styles.modalOverlay}
+                                            activeOpacity={1}
+                                            onPress={() => setShowMemberPicker(false)}
+                                        >
+                                            <View style={[styles.modalContent, { maxHeight: '60%' }]}>
+                                                <Text style={styles.modalTitle}>Select Member</Text>
+                                                <ScrollView>
+                                                    {group?.members.map((member) => (
+                                                        <TouchableOpacity
+                                                            key={member._id}
+                                                            style={[
+                                                                styles.memberSelectItem,
+                                                                selectedMemberId === member._id && styles.memberSelected
+                                                            ]}
+                                                            onPress={() => {
+                                                                setSelectedMemberId(member._id);
+                                                                setShowMemberPicker(false);
+                                                            }}
+                                                        >
+                                                            <Avatar name={member.name} size={32} fontSize={14} rounded={true} />
+                                                            <Text style={[
+                                                                styles.memberSelectName,
+                                                                selectedMemberId === member._id && { color: Colors.dark.primary }
+                                                            ]}>
+                                                                {member._id === user?.id ? `Me (${member.name})` : member.name}
+                                                            </Text>
+                                                            {selectedMemberId === member._id && (
+                                                                <Ionicons name="checkmark-circle" size={20} color={Colors.dark.primary} />
+                                                            )}
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </ScrollView>
+                                            </View>
+                                        </TouchableOpacity>
+                                    </Modal>
+                                </>
+                            );
+                        })()}
                     </View>
 
                     {(() => {
-                        const myOutgoing = transactions.filter(tx => tx.from?._id === user?.id);
-                        const myIncoming = transactions.filter(tx => tx.to?._id === user?.id);
+                        const isMe = selectedMemberId === user?.id;
+                        const selectedMember = group.members.find(m => m._id === selectedMemberId);
+
+                        const myOutgoing = transactions.filter(tx => tx.from?._id === selectedMemberId);
+                        const myIncoming = transactions.filter(tx => tx.to?._id === selectedMemberId);
 
                         return (
                             <>
-                                {/* What you owe */}
+                                {/* What you/they owe */}
                                 {myOutgoing.length > 0 ? (
                                     myOutgoing.map((tx, idx) => (
                                         <View key={`owe-${idx}`} style={styles.memberItem}>
                                             <Avatar name={tx.to?.name || 'Unknown'} size={40} fontSize={16} rounded={true} />
                                             <View style={styles.memberInfo}>
-                                                <Text style={styles.memberName}>You owe {tx.to?.name}</Text>
+                                                <Text style={styles.memberName}>
+                                                    {isMe ? 'You owe' : `${selectedMember?.name} owes`} {tx.to?.name}
+                                                </Text>
                                                 <Text style={[styles.memberBalance, { color: Colors.dark.danger }]}>
                                                     ₹{tx.amount.toFixed(2)}
                                                 </Text>
                                             </View>
-                                            <TouchableOpacity
-                                                style={styles.payButton}
-                                                onPress={() => {
-                                                    setSelectedTx(tx);
-                                                    setShowPayModal(true);
-                                                }}
-                                            >
-                                                <Text style={styles.payButtonText}>Pay Now</Text>
-                                            </TouchableOpacity>
+                                            {isMe && (
+                                                <TouchableOpacity
+                                                    style={styles.payButton}
+                                                    onPress={() => {
+                                                        setSelectedTx(tx);
+                                                        setShowPayModal(true);
+                                                    }}
+                                                >
+                                                    <Text style={styles.payButtonText}>Pay Now</Text>
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
                                     ))
                                 ) : null}
 
-                                {/* What you are owed */}
+                                {/* What you/they are owed */}
                                 {myIncoming.length > 0 ? (
                                     myIncoming.map((tx, idx) => (
                                         <View key={`owed-${idx}`} style={styles.memberItem}>
                                             <Avatar name={tx.from?.name || 'Unknown'} size={40} fontSize={16} rounded={true} />
                                             <View style={styles.memberInfo}>
-                                                <Text style={styles.memberName}>{tx.from?.name} owes you</Text>
+                                                <Text style={styles.memberName}>
+                                                    {tx.from?.name} owes {isMe ? 'you' : selectedMember?.name}
+                                                </Text>
                                                 <Text style={[styles.memberBalance, { color: Colors.dark.primary }]}>
                                                     ₹{tx.amount.toFixed(2)}
                                                 </Text>
                                             </View>
-                                            {tx.from?.upiId && (
+                                            {isMe && tx.from?.upiId && (
                                                 <TouchableOpacity
                                                     style={[styles.payButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.dark.primary }]}
                                                     onPress={() => {
@@ -398,7 +509,7 @@ export default function GroupDetailsScreen() {
                                 ) : null}
 
                                 {myOutgoing.length === 0 && myIncoming.length === 0 && (
-                                    <Text style={styles.noExpenses}>No pending balances for you</Text>
+                                    <Text style={styles.noExpenses}>No pending balances for {isMe ? 'you' : selectedMember?.name}</Text>
                                 )}
                             </>
                         );
@@ -461,28 +572,118 @@ export default function GroupDetailsScreen() {
             </ScrollView>
 
             {/* Invite Modal */}
-            <Modal visible={showInviteModal} transparent animationType="fade">
+            <Modal visible={showInviteModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Invite Friend</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            placeholder="friend@example.com"
-                            placeholderTextColor={Colors.dark.textMuted}
-                            value={inviteEmail}
-                            onChangeText={setInviteEmail}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                        />
-                        <View style={styles.modalActions}>
+                    <View style={[styles.modalContent, { maxHeight: '85%', padding: 0, overflow: 'hidden' }]}>
+                        <View style={{ paddingHorizontal: 24, paddingTop: 24, marginBottom: 16 }}>
+                            <Text style={styles.modalTitle}>Invite Friends</Text>
+
+                            {/* Selected Badges */}
+                            {selectedInvites.length > 0 && (
+                                <View style={styles.selectedBadges}>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                                        {selectedInvites.map(s => (
+                                            <TouchableOpacity
+                                                key={s._id}
+                                                style={styles.badge}
+                                                onPress={() => toggleInvite(s)}
+                                            >
+                                                <Text style={styles.badgeText}>{s.name || s.email}</Text>
+                                                <Ionicons name="close-circle" size={14} color={Colors.dark.primary} />
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </View>
+                            )}
+
+                            <TextInput
+                                style={styles.modalInput}
+                                placeholder="Search by name, email or phone..."
+                                placeholderTextColor={Colors.dark.textMuted}
+                                value={searchQuery}
+                                onChangeText={setSearchQuery}
+                                autoCapitalize="none"
+                            />
+                        </View>
+
+                        <ScrollView
+                            style={{ flexGrow: 0 }}
+                            contentContainerStyle={{ paddingHorizontal: 24 }}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <View>
+                                <Text style={styles.sectionTitleSmall}>
+                                    {searchQuery.length > 0 ? 'Search Results' : 'Suggestions'}
+                                </Text>
+                                {filteredSuggestions.length === 0 ? (
+                                    <Text style={styles.emptyTextSmall}>
+                                        {searchQuery.length > 0 ? 'No friends found' : 'No suggestions available'}
+                                    </Text>
+                                ) : (
+                                    filteredSuggestions.map(s => (
+                                        <TouchableOpacity
+                                            key={s._id}
+                                            style={styles.suggestionItem}
+                                            onPress={() => toggleInvite(s)}
+                                        >
+                                            <Avatar name={s.name || s.email} size={36} fontSize={14} rounded />
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.suggestionName}>{s.name || 'Unknown'}</Text>
+                                                <Text style={styles.suggestionEmail}>{s.email}</Text>
+                                            </View>
+                                            <Ionicons
+                                                name={selectedInvites.some(si => si._id === s._id) ? "checkbox" : "square-outline"}
+                                                size={22}
+                                                color={Colors.dark.primary}
+                                            />
+                                        </TouchableOpacity>
+                                    ))
+                                )}
+
+                                {/* Direct Email Invite if query looks like email */}
+                                {searchQuery.includes('@') && !suggestions.some(s => s.email === searchQuery.toLowerCase()) && (
+                                    <TouchableOpacity
+                                        style={styles.suggestionItem}
+                                        onPress={() => {
+                                            const email = searchQuery.toLowerCase().trim();
+                                            if (!selectedInvites.some(s => s.email === email)) {
+                                                setSelectedInvites([...selectedInvites, { _id: Date.now().toString(), name: email.split('@')[0], email }]);
+                                                setSearchQuery('');
+                                            }
+                                        }}
+                                    >
+                                        <View style={[styles.avatarPlaceholder, { backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}>
+                                            <Ionicons name="mail-outline" size={20} color={Colors.dark.textSecondary} />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.suggestionName}>Invite "{searchQuery}"</Text>
+                                            <Text style={styles.suggestionEmail}>Add new email address</Text>
+                                        </View>
+                                        <Ionicons name="add-circle" size={24} color={Colors.dark.primary} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </ScrollView>
+
+                        <View style={[styles.modalActions, { paddingHorizontal: 24, paddingBottom: 24, marginTop: 16 }]}>
                             <TouchableOpacity
                                 style={styles.modalButtonOutline}
-                                onPress={() => setShowInviteModal(false)}
+                                onPress={() => {
+                                    setShowInviteModal(false);
+                                    setSearchQuery('');
+                                    setSelectedInvites([]);
+                                }}
                             >
                                 <Text style={styles.modalButtonOutlineText}>Cancel</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.modalButton} onPress={handleInvite}>
-                                <Text style={styles.modalButtonText}>Add Member</Text>
+                            <TouchableOpacity
+                                style={[styles.modalButton, (selectedInvites.length === 0 && !searchQuery.includes('@')) && { opacity: 0.5 }]}
+                                onPress={handleInvite}
+                                disabled={selectedInvites.length === 0 && !searchQuery.includes('@')}
+                            >
+                                <Text style={styles.modalButtonText}>
+                                    Invite {selectedInvites.length > 0 ? `(${selectedInvites.length})` : ''}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -555,6 +756,42 @@ export default function GroupDetailsScreen() {
 const styles = StyleSheet.create({
     skeleton: {
         backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    },
+    pickerBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        gap: 6,
+        minWidth: 60,
+        justifyContent: 'center',
+    },
+    pickerBadgeText: {
+        color: Colors.dark.primary,
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    memberSelectItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 10,
+        gap: 12,
+        marginBottom: 4,
+    },
+    memberSelected: {
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    },
+    memberSelectName: {
+        flex: 1,
+        fontSize: 16,
+        color: Colors.dark.text,
+        fontWeight: '500',
     },
     container: {
         flex: 1,
@@ -942,5 +1179,63 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: Colors.dark.primary,
         fontWeight: '600',
+    },
+    selectedBadges: {
+        flexDirection: 'row',
+        marginBottom: 12,
+    },
+    badge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 15,
+        gap: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.2)',
+    },
+    badgeText: {
+        color: Colors.dark.primary,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    sectionTitleSmall: {
+        fontSize: 12,
+        color: Colors.dark.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 8,
+    },
+    emptyTextSmall: {
+        color: Colors.dark.textMuted,
+        fontSize: 14,
+        fontStyle: 'italic',
+        textAlign: 'center',
+        paddingVertical: 10,
+    },
+    suggestionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    suggestionName: {
+        color: Colors.dark.text,
+        fontSize: 15,
+        fontWeight: '500',
+    },
+    suggestionEmail: {
+        color: Colors.dark.textMuted,
+        fontSize: 12,
+    },
+    avatarPlaceholder: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });
