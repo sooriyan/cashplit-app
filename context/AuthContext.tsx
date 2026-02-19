@@ -15,6 +15,7 @@ interface AuthContextType {
     isLoading: boolean;
     signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
     signUp: (data: SignUpData) => Promise<{ success: boolean; error?: string }>;
+    forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
     signOut: () => Promise<void>;
 }
 
@@ -111,6 +112,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const forgotPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            const response = await api.post('/api/auth/forgot-password', { email });
+            return { success: true };
+        } catch (error: any) {
+            console.error('Forgot password error:', error);
+            return {
+                success: false,
+                error: error.response?.data?.message || 'Failed to send reset email'
+            };
+        }
+    };
+
     const signOut = async () => {
         try {
             await SecureStore.deleteItemAsync(USER_KEY);
@@ -148,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [user]);
 
     return (
-        <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut }}>
+        <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut, forgotPassword }}>
             {children}
         </AuthContext.Provider>
     );

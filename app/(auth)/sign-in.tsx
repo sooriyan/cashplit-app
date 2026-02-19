@@ -97,6 +97,14 @@ export default function SignInScreen() {
                             />
                         </View>
 
+                        <View style={styles.forgotPasswordContainer}>
+                            <Link href="/(auth)/forgot-password" asChild>
+                                <TouchableOpacity>
+                                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                                </TouchableOpacity>
+                            </Link>
+                        </View>
+
                         {error ? (
                             <View style={styles.errorContainer}>
                                 <Text style={styles.errorText}>{error}</Text>
@@ -233,6 +241,15 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     footerLink: {
+        color: Colors.dark.primary,
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    forgotPasswordContainer: {
+        alignItems: 'flex-end',
+        marginTop: 4,
+    },
+    forgotPasswordText: {
         color: Colors.dark.primary,
         fontSize: 14,
         fontWeight: '500',

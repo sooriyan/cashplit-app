@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../../components/Avatar';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
+import AdBanner from '../../../components/AdBanner';
 
 interface Member {
     _id: string;
@@ -569,6 +570,9 @@ export default function GroupDetailsScreen() {
                         })
                     )}
                 </View>
+
+                {/* Advertisement */}
+                <AdBanner />
             </ScrollView>
 
             {/* Invite Modal */}

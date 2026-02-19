@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../components/Avatar';
 import api from '../../services/api';
+import AdBanner from '../../components/AdBanner';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Group {
@@ -228,6 +229,7 @@ export default function DashboardScreen() {
         keyExtractor={(item) => item._id}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
+        ListFooterComponent={() => <AdBanner />} // Add AdBanner here
         contentContainerStyle={[styles.listContent, { paddingBottom: 40 + insets.bottom }]}
         numColumns={1}
         refreshControl={
