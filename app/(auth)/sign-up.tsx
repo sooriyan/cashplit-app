@@ -28,8 +28,8 @@ export default function SignUpScreen() {
     const [loading, setLoading] = useState(false);
 
     const handleSignUp = async () => {
-        if (!name || !email || !password || !confirmPassword || !phone || !upiId) {
-            setError('Please fill in all fields');
+        if (!name || !email || !password || !confirmPassword || !phone) {
+            setError('Please fill in all required fields');
             return;
         }
 
@@ -46,12 +46,12 @@ export default function SignUpScreen() {
         setLoading(true);
         setError('');
 
-        const result = await signUp({ 
-            name, 
-            email: email.toLowerCase().trim(), 
-            password, 
-            phone, 
-            upiId 
+        const result = await signUp({
+            name,
+            email: email.toLowerCase().trim(),
+            password,
+            phone,
+            upiId
         });
 
         if (result.success) {
@@ -153,7 +153,7 @@ export default function SignUpScreen() {
                         </View>
 
                         <View style={styles.inputGroup}>
-                            <Text style={styles.label}>UPI ID</Text>
+                            <Text style={styles.label}>UPI ID (Optional)</Text>
                             <TextInput
                                 style={styles.input}
                                 placeholder="yourname@upi"

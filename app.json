@@ -27,6 +27,7 @@
         "backgroundColor": "#0D0D0D",
         "monochromeImage": "./assets/images/adaptive-icon.png"
       },
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.sooriyan.cashplit"

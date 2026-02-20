@@ -177,10 +177,21 @@ export default function AddExpenseScreen() {
 
             if (isEditing && expenseId) {
                 await api.updateExpense(groupId!, expenseId, payload);
+                Alert.alert('Success', 'Expense updated successfully', [
+                    {
+                        text: 'OK',
+                        onPress: () => router.replace({ pathname: '/(tabs)/group/[id]', params: { id: groupId } })
+                    }
+                ]);
             } else {
                 await api.addExpense(groupId!, payload);
+                Alert.alert('Success', 'Expense added successfully', [
+                    {
+                        text: 'OK',
+                        onPress: () => router.replace({ pathname: '/(tabs)/group/[id]', params: { id: groupId } })
+                    }
+                ]);
             }
-            router.back();
         } catch (err: any) {
             Alert.alert('Error', err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'add'} expense`);
         } finally {
