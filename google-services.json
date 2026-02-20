@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1034895581377",
+    "project_id": "cashplit-8a8fb",
+    "storage_bucket": "cashplit-8a8fb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1034895581377:android:da92a971c5dc107e5e7440",
+        "android_client_info": {
+          "package_name": "com.sooriyan.cashplit"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8HnBPvzXB1A4xIFwuG9ZutmJl9NnvcU0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
