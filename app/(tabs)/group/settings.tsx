@@ -12,10 +12,11 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../../components/Avatar';
+import { CustomAlert, AlertType } from '../../../components/CustomAlert';
 import api from '../../../services/api';
 
 interface Member {
@@ -40,6 +41,45 @@ export default function GroupSettingsScreen() {
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [addingMember, setAddingMember] = useState(false);
 
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type: AlertType;
+        onPrimaryAction?: () => void;
+        secondaryButtonText?: string;
+        onSecondaryAction?: () => void;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        type: 'info',
+    });
+
+    const showAlert = (
+        title: string,
+        message: string,
+        type: AlertType = 'info',
+        onPrimaryAction?: () => void,
+        secondaryButtonText?: string,
+        onSecondaryAction?: () => void
+    ) => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            onPrimaryAction,
+            secondaryButtonText,
+            onSecondaryAction,
+        });
+    };
+
+    const hideAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
+
     useEffect(() => {
         if (id) fetchGroup();
     }, [id]);
@@ -50,31 +90,27 @@ export default function GroupSettingsScreen() {
             setGroup(res.data);
         } catch (err) {
             console.error('Failed to fetch group:', err);
-            Alert.alert('Error', 'Failed to load group settings');
+            showAlert('Error', 'Failed to load group settings', 'error');
         } finally {
             setLoading(false);
         }
     };
 
     const handleLeaveGroup = async () => {
-        Alert.alert(
+        showAlert(
             "Leave Group",
             "Are you sure you want to leave this group? You can be added back later by other members.",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Leave",
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            await api.leaveGroup(id!);
-                            router.replace('/(tabs)');
-                        } catch (err) {
-                            Alert.alert('Error', 'Failed to leave group');
-                        }
-                    }
+            'warning',
+            async () => {
+                try {
+                    await api.leaveGroup(id!);
+                    router.replace('/(tabs)');
+                } catch (err) {
+                    showAlert('Error', 'Failed to leave group', 'error');
                 }
-            ]
+            },
+            "Cancel",
+            () => hideAlert()
         );
     };
 
@@ -84,12 +120,12 @@ export default function GroupSettingsScreen() {
 
         try {
             await api.addMember(id!, inviteEmail);
-            Alert.alert('Success', 'Member added!');
+            showAlert('Success', 'Member added!', 'success');
             setInviteEmail('');
             setShowInviteModal(false);
             fetchGroup();
         } catch (err: any) {
-            Alert.alert('Error', err.response?.data?.message || 'Failed to add member');
+            showAlert('Error', err.response?.data?.message || 'Failed to add member', 'error');
         } finally {
             setAddingMember(false);
         }
@@ -212,6 +248,17 @@ export default function GroupSettingsScreen() {
                     </View>
                 </View>
             </Modal>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={hideAlert}
+                onPrimaryAction={alertConfig.onPrimaryAction}
+                secondaryButtonText={alertConfig.secondaryButtonText}
+                onSecondaryAction={alertConfig.onSecondaryAction}
+            />
         </LinearGradient>
     );
 }

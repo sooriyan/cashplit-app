@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { CustomAlert, AlertType } from '../../../components/CustomAlert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../../components/Avatar';
 import { useAuth } from '../../../context/AuthContext';
@@ -35,13 +36,52 @@ export default function AllExpensesScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type: AlertType;
+        onPrimaryAction?: () => void;
+        secondaryButtonText?: string;
+        onSecondaryAction?: () => void;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        type: 'info',
+    });
+
+    const showAlert = (
+        title: string,
+        message: string,
+        type: AlertType = 'info',
+        onPrimaryAction?: () => void,
+        secondaryButtonText?: string,
+        onSecondaryAction?: () => void
+    ) => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            onPrimaryAction,
+            secondaryButtonText,
+            onSecondaryAction,
+        });
+    };
+
+    const hideAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
+
     const fetchExpenses = async () => {
         try {
             const res = await api.getGroup(groupId!);
             setExpenses(res.data.expenses || []);
         } catch (err) {
             console.error('Failed to fetch expenses:', err);
-            Alert.alert('Error', 'Failed to load expenses');
+            showAlert('Error', 'Failed to load expenses', 'error');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -62,24 +102,21 @@ export default function AllExpensesScreen() {
     };
 
     const handleDeleteExpense = async (expenseId: string) => {
-        Alert.alert(
+        showAlert(
             'Delete Expense',
             'Are you sure you want to delete this expense?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await api.deleteExpense(groupId!, expenseId);
-                            fetchExpenses();
-                        } catch (err) {
-                            Alert.alert('Error', 'Failed to delete expense');
-                        }
-                    },
-                },
-            ]
+            'warning',
+            async () => {
+                try {
+                    await api.deleteExpense(groupId!, expenseId);
+                    fetchExpenses();
+                    hideAlert();
+                } catch (err) {
+                    showAlert('Error', 'Failed to delete expense', 'error');
+                }
+            },
+            'Cancel',
+            () => hideAlert()
         );
     };
 
@@ -165,6 +202,17 @@ export default function AllExpensesScreen() {
                     })
                 )}
             </ScrollView>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={hideAlert}
+                onPrimaryAction={alertConfig.onPrimaryAction}
+                secondaryButtonText={alertConfig.secondaryButtonText}
+                onSecondaryAction={alertConfig.onSecondaryAction}
+            />
         </LinearGradient>
     );
 }

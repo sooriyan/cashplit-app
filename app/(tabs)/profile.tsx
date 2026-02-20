@@ -12,6 +12,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { CustomAlert, AlertType } from '../../components/CustomAlert';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 
@@ -27,6 +28,34 @@ export default function ProfileScreen() {
     const [saving, setSaving] = useState(false);
     const [savingUpi, setSavingUpi] = useState(false);
     const [message, setMessage] = useState('');
+
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type: AlertType;
+        onPrimaryAction?: () => void;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        type: 'info',
+    });
+
+    const showAlert = (title: string, message: string, type: AlertType = 'info', onPrimaryAction?: () => void) => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            onPrimaryAction,
+        });
+    };
+
+    const hideAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
 
     useEffect(() => {
         // Only fetch profile when user is authenticated
@@ -87,7 +116,7 @@ export default function ProfileScreen() {
 
     const handleUpdateUpi = async () => {
         if (!formData.upiId) {
-            Alert.alert('Error', 'Please enter a UPI ID');
+            showAlert('Error', 'Please enter a UPI ID', 'warning');
             return;
         }
 
@@ -99,10 +128,10 @@ export default function ProfileScreen() {
                 upiId: formData.upiId,
             });
             setMessage('UPI ID updated successfully!');
-            Alert.alert('Success', 'UPI ID updated successfully!');
+            showAlert('Success', 'UPI ID updated successfully!', 'success');
         } catch (err) {
             setMessage('Failed to update UPI ID');
-            Alert.alert('Error', 'Failed to update UPI ID');
+            showAlert('Error', 'Failed to update UPI ID', 'error');
         } finally {
             setSavingUpi(false);
         }
@@ -247,6 +276,15 @@ export default function ProfileScreen() {
 
                 <Text style={styles.version}>Cashplit v1.0.0</Text>
             </ScrollView>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={hideAlert}
+                onPrimaryAction={alertConfig.onPrimaryAction}
+            />
         </LinearGradient>
     );
 }

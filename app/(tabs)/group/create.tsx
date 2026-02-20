@@ -6,9 +6,9 @@ import {
     StyleSheet,
     TouchableOpacity,
     ActivityIndicator,
-    Alert,
     ScrollView,
 } from 'react-native';
+import { CustomAlert, AlertType } from '../../../components/CustomAlert';
 import { router, Stack } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +29,34 @@ export default function CreateGroupScreen() {
     const [suggestions, setSuggestions] = useState<Member[]>([]);
     const [selectedMembers, setSelectedMembers] = useState<Member[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type: AlertType;
+        onPrimaryAction?: () => void;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        type: 'info',
+    });
+
+    const showAlert = (title: string, message: string, type: AlertType = 'info', onPrimaryAction?: () => void) => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            onPrimaryAction,
+        });
+    };
+
+    const hideAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
 
     useEffect(() => {
         fetchSuggestions();
@@ -67,7 +95,7 @@ export default function CreateGroupScreen() {
 
     const handleSubmit = async () => {
         if (!name.trim()) {
-            Alert.alert('Error', 'Please enter a group name');
+            showAlert('Error', 'Please enter a group name', 'warning');
             return;
         }
 
@@ -84,13 +112,13 @@ export default function CreateGroupScreen() {
                     await api.addMembers(groupId, emails);
                 } catch (inviteErr) {
                     console.error('Failed to invite members:', inviteErr);
-                    Alert.alert('Partially Successful', 'Group created, but some invitations could not be sent.');
+                    showAlert('Partially Successful', 'Group created, but some invitations could not be sent.', 'warning');
                 }
             }
 
             router.replace('/(tabs)');
         } catch (err: any) {
-            Alert.alert('Error', err.response?.data?.message || 'Failed to create group');
+            showAlert('Error', err.response?.data?.message || 'Failed to create group', 'error');
         } finally {
             setLoading(false);
         }
@@ -230,7 +258,16 @@ export default function CreateGroupScreen() {
                     </View>
                 </View>
             </ScrollView>
-        </LinearGradient>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={hideAlert}
+                onPrimaryAction={alertConfig.onPrimaryAction}
+            />
+        </LinearGradient >
     );
 }
 

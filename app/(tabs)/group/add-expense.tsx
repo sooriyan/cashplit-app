@@ -13,10 +13,11 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, getAvatarColor } from '../../../components/Avatar';
+import { CustomAlert, AlertType } from '../../../components/CustomAlert';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 
@@ -44,6 +45,34 @@ export default function AddExpenseScreen() {
     const [fetchingGroup, setFetchingGroup] = useState(true);
     const [showPayerPicker, setShowPayerPicker] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type: AlertType;
+        onPrimaryAction?: () => void;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        type: 'info',
+    });
+
+    const showAlert = (title: string, message: string, type: AlertType = 'info', onPrimaryAction?: () => void) => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            onPrimaryAction,
+        });
+    };
+
+    const hideAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -92,7 +121,7 @@ export default function AddExpenseScreen() {
                 }
             } catch (err) {
                 console.error('Failed to fetch data:', err);
-                Alert.alert('Error', 'Failed to load data');
+                showAlert('Error', 'Failed to load data', 'error');
             } finally {
                 setFetchingGroup(false);
             }
@@ -129,29 +158,29 @@ export default function AddExpenseScreen() {
 
     const handleSubmit = async () => {
         if (!description.trim()) {
-            Alert.alert('Error', 'Please enter a description');
+            showAlert('Error', 'Please enter a description', 'warning');
             return;
         }
 
         if (!amount || parseFloat(amount) <= 0) {
-            Alert.alert('Error', 'Please enter a valid amount');
+            showAlert('Error', 'Please enter a valid amount', 'warning');
             return;
         }
 
         if (!paidBy) {
-            Alert.alert('Error', 'Please select who paid');
+            showAlert('Error', 'Please select who paid', 'warning');
             return;
         }
 
         if (selectedMembers.length === 0) {
-            Alert.alert('Error', 'Please select at least one person to split with');
+            showAlert('Error', 'Please select at least one person to split with', 'warning');
             return;
         }
 
         if (splitType === 'percentage') {
             const total = getTotalPercentage();
             if (Math.abs(total - 100) > 0.01) {
-                Alert.alert('Error', `Percentages must sum to 100% (currently ${total.toFixed(2)}%)`);
+                showAlert('Error', `Percentages must sum to 100% (currently ${total.toFixed(2)}%)`, 'warning');
                 return;
             }
         }
@@ -177,23 +206,17 @@ export default function AddExpenseScreen() {
 
             if (isEditing && expenseId) {
                 await api.updateExpense(groupId!, expenseId, payload);
-                Alert.alert('Success', 'Expense updated successfully', [
-                    {
-                        text: 'OK',
-                        onPress: () => router.replace({ pathname: '/(tabs)/group/[id]', params: { id: groupId } })
-                    }
-                ]);
+                showAlert('Success', 'Expense updated successfully', 'success', () => {
+                    router.replace({ pathname: '/(tabs)/group/[id]', params: { id: groupId } });
+                });
             } else {
                 await api.addExpense(groupId!, payload);
-                Alert.alert('Success', 'Expense added successfully', [
-                    {
-                        text: 'OK',
-                        onPress: () => router.replace({ pathname: '/(tabs)/group/[id]', params: { id: groupId } })
-                    }
-                ]);
+                showAlert('Success', 'Expense added successfully', 'success', () => {
+                    router.replace({ pathname: '/(tabs)/group/[id]', params: { id: groupId } });
+                });
             }
         } catch (err: any) {
-            Alert.alert('Error', err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'add'} expense`);
+            showAlert('Error', err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'add'} expense`, 'error');
         } finally {
             setLoading(false);
         }
@@ -465,6 +488,15 @@ export default function AddExpenseScreen() {
                     )}
                 </TouchableOpacity>
             </ScrollView>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={hideAlert}
+                onPrimaryAction={alertConfig.onPrimaryAction}
+            />
         </LinearGradient>
     );
 }

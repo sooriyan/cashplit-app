@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../../components/Avatar';
+import { CustomAlert, AlertType } from '../../../components/CustomAlert';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 import AdBanner from '../../../components/AdBanner';
@@ -71,6 +72,45 @@ export default function GroupDetailsScreen() {
     const [selectedInvites, setSelectedInvites] = useState<Member[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
 
+    // Custom Alert State
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type: AlertType;
+        onPrimaryAction?: () => void;
+        secondaryButtonText?: string;
+        onSecondaryAction?: () => void;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        type: 'info',
+    });
+
+    const showAlert = (
+        title: string,
+        message: string,
+        type: AlertType = 'info',
+        onPrimaryAction?: () => void,
+        secondaryButtonText?: string,
+        onSecondaryAction?: () => void
+    ) => {
+        setAlertConfig({
+            visible: true,
+            title,
+            message,
+            type,
+            onPrimaryAction,
+            secondaryButtonText,
+            onSecondaryAction,
+        });
+    };
+
+    const hideAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
+
     const fetchData = async () => {
         setLoading(true);
         setGroup(null);
@@ -119,9 +159,9 @@ export default function GroupDetailsScreen() {
             setSearchQuery('');
             setShowInviteModal(false);
             fetchData();
-            Alert.alert('Success', 'Invitations processed successfully');
+            showAlert('Success', 'Invitations processed successfully', 'success');
         } catch (err: any) {
-            Alert.alert('Error', err.response?.data?.message || 'Failed to send invitations');
+            showAlert('Error', err.response?.data?.message || 'Failed to send invitations', 'error');
         }
     };
 
@@ -165,29 +205,26 @@ export default function GroupDetailsScreen() {
             setShowPayModal(false);
             fetchData();
         } catch (err) {
-            Alert.alert('Error', 'Failed to mark as paid');
+            showAlert('Error', 'Failed to mark as paid', 'error');
         }
     };
 
     const handleDeleteExpense = async (expenseId: string) => {
-        Alert.alert(
+        showAlert(
             'Delete Expense',
             'Are you sure you want to delete this expense?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await api.deleteExpense(id!, expenseId);
-                            fetchData();
-                        } catch (err) {
-                            Alert.alert('Error', 'Failed to delete expense');
-                        }
-                    },
-                },
-            ]
+            'warning',
+            async () => {
+                try {
+                    await api.deleteExpense(id!, expenseId);
+                    fetchData();
+                    hideAlert();
+                } catch (err) {
+                    showAlert('Error', 'Failed to delete expense', 'error');
+                }
+            },
+            'Cancel',
+            () => hideAlert()
         );
     };
 
@@ -499,7 +536,7 @@ export default function GroupDetailsScreen() {
                                                     style={[styles.payButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.dark.primary }]}
                                                     onPress={() => {
                                                         Clipboard.setStringAsync(tx.from?.upiId || '');
-                                                        Alert.alert('Copied!', 'UPI ID copied to clipboard');
+                                                        showAlert('Copied!', 'UPI ID copied to clipboard', 'info');
                                                     }}
                                                 >
                                                     <Text style={[styles.payButtonText, { color: Colors.dark.primary }]}>Copy UPI</Text>
@@ -716,7 +753,7 @@ export default function GroupDetailsScreen() {
                                         style={styles.upiActionButton}
                                         onPress={() => {
                                             Clipboard.setStringAsync(selectedTx.to.upiId || '');
-                                            Alert.alert('Copied!', 'UPI ID copied to clipboard');
+                                            showAlert('Copied!', 'UPI ID copied to clipboard', 'info');
                                         }}
                                     >
                                         <Ionicons name="copy-outline" size={18} color={Colors.dark.primary} />
@@ -728,7 +765,7 @@ export default function GroupDetailsScreen() {
                                         onPress={() => {
                                             const upiUrl = `upi://pay?pa=${selectedTx.to.upiId}&pn=${encodeURIComponent(selectedTx.to.name)}&am=${selectedTx.amount.toFixed(2)}&cu=INR`;
                                             Linking.openURL(upiUrl).catch(() => {
-                                                Alert.alert('Error', 'No UPI app found on this device');
+                                                showAlert('Error', 'No UPI app found on this device', 'error');
                                             });
                                         }}
                                     >
@@ -753,6 +790,17 @@ export default function GroupDetailsScreen() {
                     </View>
                 </View>
             </Modal>
+
+            <CustomAlert
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+                onClose={hideAlert}
+                onPrimaryAction={alertConfig.onPrimaryAction}
+                secondaryButtonText={alertConfig.secondaryButtonText}
+                onSecondaryAction={alertConfig.onSecondaryAction}
+            />
         </LinearGradient>
     );
 }
