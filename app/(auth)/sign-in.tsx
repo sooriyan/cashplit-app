@@ -12,11 +12,12 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { Colors } from '@/constants/Colors';
 
 export default function SignInScreen() {
-    const { signIn } = useAuth();
+    const { signIn, signInWithGoogle } = useAuth();
     const insets = useSafeAreaInsets();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -38,6 +39,21 @@ export default function SignInScreen() {
             router.replace('/(tabs)');
         } else {
             setError(result.error || 'Sign in failed');
+        }
+
+        setLoading(false);
+    };
+
+    const handleGoogleSignIn = async () => {
+        setLoading(true);
+        setError('');
+
+        const result = await signInWithGoogle();
+
+        if (result.success) {
+            router.replace('/(tabs)');
+        } else {
+            setError(result.error || 'Google Sign-in failed');
         }
 
         setLoading(false);
@@ -121,6 +137,21 @@ export default function SignInScreen() {
                             ) : (
                                 <Text style={styles.buttonText}>Sign In</Text>
                             )}
+                        </TouchableOpacity>
+
+                        <View style={styles.dividerContainer}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>or</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.googleButton}
+                            onPress={handleGoogleSignIn}
+                            disabled={loading}
+                        >
+                            <Ionicons name="logo-google" size={20} color={Colors.dark.text} style={styles.googleIcon} />
+                            <Text style={styles.googleButtonText}>Continue with Google</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -253,5 +284,39 @@ const styles = StyleSheet.create({
         color: Colors.dark.primary,
         fontSize: 14,
         fontWeight: '500',
+    },
+    dividerContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: 8,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: Colors.dark.border,
+    },
+    dividerText: {
+        color: Colors.dark.textMuted,
+        paddingHorizontal: 12,
+        fontSize: 14,
+    },
+    googleButton: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderWidth: 1,
+        borderColor: Colors.dark.border,
+        borderRadius: 8,
+        padding: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+    },
+    googleIcon: {
+        marginRight: 4,
+    },
+    googleButtonText: {
+        color: Colors.dark.text,
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import api from '../services/api';
 import { registerForPushNotificationsAsync } from '../services/notifications';
 import * as Notifications from 'expo-notifications';
@@ -14,6 +15,7 @@ interface AuthContextType {
     user: User | null;
     isLoading: boolean;
     signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+    signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
     signUp: (data: SignUpData) => Promise<{ success: boolean; error?: string }>;
     forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
     signOut: () => Promise<void>;
@@ -36,6 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        // Configure Google Sign-in
+        GoogleSignin.configure({
+            webClientId: '1034895581377-cvplie31heappubt38bg38fg84035pd6.apps.googleusercontent.com', // client type 3 in google-services.json
+            offlineAccess: true,
+            forceCodeForRefreshToken: true,
+        });
+
         loadStoredUser();
     }, []);
 
@@ -79,6 +88,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return {
                 success: false,
                 error: error.response?.data?.message || 'Sign in failed'
+            };
+        }
+    };
+
+    const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+        try {
+            await GoogleSignin.hasPlayServices();
+            const userInfo = await GoogleSignin.signIn();
+            const idToken = userInfo.data?.idToken;
+
+            if (!idToken) {
+                return { success: false, error: 'Failed to get ID token' };
+            }
+
+            // Call the auth API with the Google ID token
+            const response = await api.post('/api/auth/google', { idToken });
+
+            if (response.data?.user) {
+                const userData: User = {
+                    id: response.data.user.id,
+                    name: response.data.user.name,
+                    email: response.data.user.email,
+                };
+
+                await SecureStore.setItemAsync(USER_KEY, JSON.stringify(userData));
+                api.setUserId(userData.id);
+                setUser(userData);
+
+                return { success: true };
+            }
+
+            return { success: false, error: 'Google sign-in failed on server' };
+        } catch (error: any) {
+            console.error('Google sign-in error:', error);
+            if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+                return { success: false, error: 'Sign in cancelled' };
+            } else if (error.code === statusCodes.IN_PROGRESS) {
+                return { success: false, error: 'Sign in in progress' };
+            } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+                return { success: false, error: 'Play services not available' };
+            }
+            return {
+                success: false,
+                error: error.response?.data?.message || 'Google sign-in failed'
             };
         }
     };
@@ -162,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [user]);
 
     return (
-        <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut, forgotPassword }}>
+        <AuthContext.Provider value={{ user, isLoading, signIn, signInWithGoogle, signUp, signOut, forgotPassword }}>
             {children}
         </AuthContext.Provider>
     );

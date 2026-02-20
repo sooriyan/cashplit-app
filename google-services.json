@@ -12,7 +12,20 @@
           "package_name": "com.sooriyan.cashplit"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1034895581377-svsmdoe4sanhmfj2aj5o3citsuv8u7lq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.sooriyan.cashplit",
+            "certificate_hash": "6d835f69bf2e81d9235bd5f76b32756330618774"
+          }
+        },
+        {
+          "client_id": "1034895581377-cvplie31heappubt38bg38fg84035pd6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyC8HnBPvzXB1A4xIFwuG9ZutmJl9NnvcU0"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1034895581377-cvplie31heappubt38bg38fg84035pd6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

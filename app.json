@@ -45,7 +45,8 @@
           "androidAppId": "ca-app-pub-1010456663125439~9511072511",
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true
