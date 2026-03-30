@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 import { AuthProvider } from '../context/AuthContext';
+import { ConfigProvider } from '../context/ConfigContext';
 import { Colors } from '@/constants/Colors';
 
 // Custom dark theme matching web design
@@ -33,7 +34,8 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <ThemeProvider value={CashplitDarkTheme}>
+        <ConfigProvider>
+          <ThemeProvider value={CashplitDarkTheme}>
           <Stack
             screenOptions={{
               headerStyle: {
@@ -54,6 +56,7 @@ export default function RootLayout() {
           </Stack>
           <StatusBar style="light" />
         </ThemeProvider>
+        </ConfigProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

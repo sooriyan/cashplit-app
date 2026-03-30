@@ -158,6 +158,11 @@ class ApiService {
         return this.put('/api/profile', data);
     }
 
+    // Config
+    getConfig() {
+        return this.get('/api/config');
+    }
+
     // User suggestions
     getUserSuggestions() {
         return this.get('/api/users/suggestions');

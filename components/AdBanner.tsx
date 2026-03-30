@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import { Colors } from '@/constants/Colors';
+import { useConfig } from '@/context/ConfigContext';
 
 interface AdBannerProps {
     unitId?: string;
@@ -14,9 +15,10 @@ const AdBanner: React.FC<AdBannerProps> = ({
 }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const { config } = useConfig();
 
-    if (error) {
-        return null; // Don't show anything if ad fails to load
+    if (error || !config.adsEnabled) {
+        return null; // Don't show anything if ad fails to load or ads are disabled
     }
 
     return (
