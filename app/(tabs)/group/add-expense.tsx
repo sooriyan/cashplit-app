@@ -45,6 +45,14 @@ export default function AddExpenseScreen() {
     const [fetchingGroup, setFetchingGroup] = useState(true);
     const [showPayerPicker, setShowPayerPicker] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+
+    const COMMON_DESCRIPTIONS = [
+        'Food', 'Dinner', 'Lunch', 'Breakfast', 'Drinks',
+        'Groceries', 'Uber', 'Ola', 'Taxi', 'Fuel',
+        'Rent', 'Electricity', 'Internet', 'Movie',
+        'Travel', 'Shopping', 'Gifts'
+    ];
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -82,6 +90,15 @@ export default function AddExpenseScreen() {
                 const res = await api.getGroup(groupId);
                 const group = res.data;
                 setMembers(group.members);
+
+                // Extract unique descriptions from history
+                const historySuggestions = group.expenses
+                    ? Array.from(new Set(group.expenses.map((e: any) => e.description))).slice(0, 10)
+                    : [];
+
+                // Combine with common ones and remove duplicates
+                const combined = Array.from(new Set([...historySuggestions, ...COMMON_DESCRIPTIONS]));
+                setSuggestions(combined as string[]);
 
                 if (expenseId) {
                     setIsEditing(true);
@@ -278,6 +295,24 @@ export default function AddExpenseScreen() {
                         value={description}
                         onChangeText={setDescription}
                     />
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.suggestionsContainer}
+                        contentContainerStyle={styles.suggestionsContent}
+                    >
+                        {suggestions
+                            .filter(s => s.toLowerCase().includes(description.toLowerCase()) || description === '')
+                            .map((s, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={styles.suggestionChip}
+                                    onPress={() => setDescription(s)}
+                                >
+                                    <Text style={styles.suggestionChipText}>{s}</Text>
+                                </TouchableOpacity>
+                            ))}
+                    </ScrollView>
                 </View>
 
                 {/* Paid By */}
@@ -557,6 +592,26 @@ const styles = StyleSheet.create({
         padding: 14,
         fontSize: 16,
         color: Colors.dark.text,
+    },
+    suggestionsContainer: {
+        marginTop: 10,
+    },
+    suggestionsContent: {
+        gap: 8,
+        paddingRight: 20,
+    },
+    suggestionChip: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderWidth: 1,
+        borderColor: Colors.dark.border,
+    },
+    suggestionChipText: {
+        color: Colors.dark.textSecondary,
+        fontSize: 12,
+        fontWeight: '500',
     },
     pickerContainer: {
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
