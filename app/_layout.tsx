@@ -8,6 +8,8 @@ import { AuthProvider } from '../context/AuthContext';
 import { ConfigProvider } from '../context/ConfigContext';
 import { Colors } from '@/constants/Colors';
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
 // Custom dark theme matching web design
 const CashplitDarkTheme = {
   ...DarkTheme,
@@ -22,6 +24,15 @@ const CashplitDarkTheme = {
   },
 };
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
+
 export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -33,31 +44,33 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <ConfigProvider>
-          <ThemeProvider value={CashplitDarkTheme}>
-          <Stack
-            screenOptions={{
-              headerStyle: {
-                backgroundColor: Colors.dark.background,
-              },
-              headerTintColor: Colors.dark.text,
-              headerTitleStyle: {
-                fontWeight: '600',
-              },
-              contentStyle: {
-                backgroundColor: Colors.dark.background,
-              },
-            }}
-          >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-          <StatusBar style="light" />
-        </ThemeProvider>
-        </ConfigProvider>
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <ConfigProvider>
+            <ThemeProvider value={CashplitDarkTheme}>
+            <Stack
+              screenOptions={{
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: '600',
+                },
+                contentStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+              }}
+            >
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="+not-found" />
+            </Stack>
+            <StatusBar style="light" />
+          </ThemeProvider>
+          </ConfigProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }

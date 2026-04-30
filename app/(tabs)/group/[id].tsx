@@ -2,8 +2,8 @@ import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import React, { useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -23,6 +23,7 @@ import { CustomAlert, AlertType } from '../../../components/CustomAlert';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 import AdBanner from '../../../components/AdBanner';
+import { useQuery } from '@tanstack/react-query';
 
 interface Member {
     _id: string;
@@ -58,17 +59,11 @@ export default function GroupDetailsScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
     const insets = useSafeAreaInsets();
-    const [group, setGroup] = useState<Group | null>(null);
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [balances, setBalances] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showPayModal, setShowPayModal] = useState(false);
     const [showMemberPicker, setShowMemberPicker] = useState(false);
     const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
     const [selectedMemberId, setSelectedMemberId] = useState<string | null>(user?.id || null);
-    const [suggestions, setSuggestions] = useState<Member[]>([]);
     const [selectedInvites, setSelectedInvites] = useState<Member[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -111,41 +106,43 @@ export default function GroupDetailsScreen() {
         setAlertConfig(prev => ({ ...prev, visible: false }));
     };
 
-    const fetchData = async () => {
-        setLoading(true);
-        setGroup(null);
-        try {
-            const [groupRes, balanceRes, suggestionsRes] = await Promise.all([
-                api.getGroup(id!),
-                api.getGroupBalances(id!),
-                api.getUserSuggestions(),
-            ]);
-            setGroup(groupRes.data);
-            setTransactions(balanceRes.data.transactions || []);
-            setBalances(balanceRes.data.balances || []);
-            console.log('Suggestions fetched:', suggestionsRes.data?.length || 0);
-            setSuggestions(suggestionsRes.data || []);
-        } catch (err) {
-            console.error('Failed to fetch group:', err);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
+    const { data: group, isLoading: groupLoading, refetch: refetchGroup, isRefetching: isGroupRefetching } = useQuery({
+        queryKey: ['group', id],
+        queryFn: async () => {
+            const res = await api.getGroup(id!);
+            return res.data as Group;
+        },
+        enabled: !!id,
+    });
 
-    useFocusEffect(
-        useCallback(() => {
-            if (id) {
-                setLoading(true);
-                setGroup(null);
-                fetchData();
-            }
-        }, [id])
-    );
+    const { data: balanceData, isLoading: balanceLoading, refetch: refetchBalance, isRefetching: isBalanceRefetching } = useQuery({
+        queryKey: ['groupBalances', id],
+        queryFn: async () => {
+            const res = await api.getGroupBalances(id!);
+            return res.data;
+        },
+        enabled: !!id,
+    });
+
+    const { data: suggestionsData } = useQuery({
+        queryKey: ['userSuggestions'],
+        queryFn: async () => {
+            const res = await api.getUserSuggestions();
+            return res.data as Member[];
+        },
+        enabled: showInviteModal,
+    });
+
+    const transactions = balanceData?.transactions || [];
+    const balances = balanceData?.balances || [];
+    const suggestions = suggestionsData || [];
+
+    const loading = groupLoading || balanceLoading;
+    const refreshing = isGroupRefetching || isBalanceRefetching;
 
     const onRefresh = () => {
-        setRefreshing(true);
-        fetchData();
+        refetchGroup();
+        refetchBalance();
     };
 
     const handleInvite = async () => {
@@ -158,7 +155,7 @@ export default function GroupDetailsScreen() {
             setSelectedInvites([]);
             setSearchQuery('');
             setShowInviteModal(false);
-            fetchData();
+            refetchGroup();
             showAlert('Success', 'Invitations processed successfully', 'success');
         } catch (err: any) {
             showAlert('Error', err.response?.data?.message || 'Failed to send invitations', 'error');
@@ -203,7 +200,8 @@ export default function GroupDetailsScreen() {
                 amount: selectedTx.amount,
             });
             setShowPayModal(false);
-            fetchData();
+            refetchGroup();
+            refetchBalance();
         } catch (err) {
             showAlert('Error', 'Failed to mark as paid', 'error');
         }
@@ -217,7 +215,8 @@ export default function GroupDetailsScreen() {
             async () => {
                 try {
                     await api.deleteExpense(id!, expenseId);
-                    fetchData();
+                    refetchGroup();
+                    refetchBalance();
                     hideAlert();
                 } catch (err) {
                     showAlert('Error', 'Failed to delete expense', 'error');

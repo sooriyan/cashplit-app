@@ -1,8 +1,8 @@
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import { router } from 'expo-router';
+import React from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -18,74 +18,39 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../components/Avatar';
 import api from '../../services/api';
 import AdBanner from '../../components/AdBanner';
+import { useQuery } from '@tanstack/react-query';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Group {
   _id: string;
   name: string;
   members: any[];
-}
-
-interface GroupBalance {
-  groupId: string;
-  balance: number;
+  userBalance?: number; // Added from the updated backend API
 }
 
 export default function DashboardScreen() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [balances, setBalances] = useState<Record<string, number>>({});
   const insets = useSafeAreaInsets();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchData = async () => {
-    try {
+  const { data: groupsData, isLoading: loading, refetch: refetchGroups, isRefetching: refreshing } = useQuery({
+    queryKey: ['groups'],
+    queryFn: async () => {
       const res = await api.getGroups();
-      const sortedGroups = res.data.sort((a: Group, b: Group) => b._id.localeCompare(a._id));
-      setGroups(sortedGroups);
-
-      // Fetch balances for each group
-      const balancePromises = res.data.map(async (group: Group) => {
-        try {
-          const balanceRes = await api.getGroupBalances(group._id);
-          const userBalance = balanceRes.data.balances?.find((b: any) => b.isCurrentUser);
-          return { groupId: group._id, balance: userBalance?.balance || 0 };
-        } catch {
-          return { groupId: group._id, balance: 0 };
-        }
-      });
-
-      const balanceResults = await Promise.all(balancePromises);
-      const balanceMap: Record<string, number> = {};
-      balanceResults.forEach((b: GroupBalance) => {
-        balanceMap[b.groupId] = b.balance;
-      });
-      setBalances(balanceMap);
-    } catch (err) {
-      console.error('Failed to fetch groups', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      return res.data.sort((a: Group, b: Group) => b._id.localeCompare(a._id));
     }
-  };
+  });
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [])
-  );
+  const groups: Group[] = groupsData || [];
 
   const onRefresh = () => {
-    setRefreshing(true);
-    fetchData();
+    refetchGroups();
   };
 
-  const totalOwed = Object.values(balances).filter(b => b > 0).reduce((sum, b) => sum + b, 0);
-  const totalOwing = Object.values(balances).filter(b => b < 0).reduce((sum, b) => sum + Math.abs(b), 0);
+  const totalOwed = groups.filter(g => (g.userBalance || 0) > 0).reduce((sum, g) => sum + (g.userBalance || 0), 0);
+  const totalOwing = groups.filter(g => (g.userBalance || 0) < 0).reduce((sum, g) => sum + Math.abs(g.userBalance || 0), 0);
   const netBalance = totalOwed - totalOwing;
 
   const renderGroupCard = ({ item }: { item: Group }) => {
-    const groupBalance = balances[item._id] || 0;
+    const groupBalance = item.userBalance || 0;
 
     return (
       <TouchableOpacity

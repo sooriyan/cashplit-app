@@ -2,7 +2,7 @@ import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../../components/Avatar';
 import { CustomAlert, AlertType } from '../../../components/CustomAlert';
 import api from '../../../services/api';
+import { useQuery } from '@tanstack/react-query';
 
 interface Member {
     _id: string;
@@ -35,8 +36,6 @@ interface Group {
 export default function GroupSettingsScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const insets = useSafeAreaInsets();
-    const [group, setGroup] = useState<Group | null>(null);
-    const [loading, setLoading] = useState(true);
     const [inviteEmail, setInviteEmail] = useState('');
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [addingMember, setAddingMember] = useState(false);
@@ -80,21 +79,14 @@ export default function GroupSettingsScreen() {
         setAlertConfig(prev => ({ ...prev, visible: false }));
     };
 
-    useEffect(() => {
-        if (id) fetchGroup();
-    }, [id]);
-
-    const fetchGroup = async () => {
-        try {
+    const { data: group, isLoading: loading, refetch: fetchGroup } = useQuery({
+        queryKey: ['group', id],
+        queryFn: async () => {
             const res = await api.getGroup(id!);
-            setGroup(res.data);
-        } catch (err) {
-            console.error('Failed to fetch group:', err);
-            showAlert('Error', 'Failed to load group settings', 'error');
-        } finally {
-            setLoading(false);
-        }
-    };
+            return res.data as Group;
+        },
+        enabled: !!id,
+    });
 
     const handleLeaveGroup = async () => {
         showAlert(

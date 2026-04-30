@@ -9,7 +9,7 @@ import {
     ActivityIndicator,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,6 @@ import { Colors } from '@/constants/Colors';
 
 export default function SignInScreen() {
     const { signIn, signInWithGoogle } = useAuth();
-    const insets = useSafeAreaInsets();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -64,12 +63,10 @@ export default function SignInScreen() {
             colors={[Colors.dark.backgroundGradientStart, Colors.dark.backgroundGradientEnd]}
             style={styles.container}
         >
-            <KeyboardAwareScrollView
-                style={styles.scrollView}
-                contentContainerStyle={[
-                    styles.scrollContent,
-                    { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 }
-                ]}
+            <SafeAreaView style={{ flex: 1 }}>
+                <KeyboardAwareScrollView
+                    style={styles.scrollView}
+                    contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 enableOnAndroid={true}
@@ -165,6 +162,7 @@ export default function SignInScreen() {
                     </View>
                 </View>
             </KeyboardAwareScrollView>
+            </SafeAreaView>
         </LinearGradient>
     );
 }

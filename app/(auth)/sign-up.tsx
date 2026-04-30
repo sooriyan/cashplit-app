@@ -12,12 +12,11 @@ import {
     View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 
 export default function SignUpScreen() {
     const { signUp } = useAuth();
-    const insets = useSafeAreaInsets();
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -68,12 +67,10 @@ export default function SignUpScreen() {
             colors={[Colors.dark.backgroundGradientStart, Colors.dark.backgroundGradientEnd]}
             style={styles.container}
         >
-            <KeyboardAwareScrollView
-                style={styles.scrollView}
-                contentContainerStyle={[
-                    styles.scrollContent,
-                    { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
-                ]}
+            <SafeAreaView style={{ flex: 1 }}>
+                <KeyboardAwareScrollView
+                    style={styles.scrollView}
+                    contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 enableOnAndroid={true}
@@ -193,6 +190,7 @@ export default function SignUpScreen() {
                     </View>
                 </View>
             </KeyboardAwareScrollView>
+            </SafeAreaView>
         </LinearGradient>
     );
 }

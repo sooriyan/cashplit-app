@@ -10,7 +10,7 @@ import {
     Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +19,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function ForgotPasswordScreen() {
     const { forgotPassword } = useAuth();
-    const insets = useSafeAreaInsets();
     const [email, setEmail] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -50,12 +49,10 @@ export default function ForgotPasswordScreen() {
             colors={[Colors.dark.backgroundGradientStart, Colors.dark.backgroundGradientEnd]}
             style={styles.container}
         >
-            <KeyboardAwareScrollView
-                style={styles.scrollView}
-                contentContainerStyle={[
-                    styles.scrollContent,
-                    { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
-                ]}
+            <SafeAreaView style={{ flex: 1 }}>
+                <KeyboardAwareScrollView
+                    style={styles.scrollView}
+                    contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
             >
@@ -136,6 +133,7 @@ export default function ForgotPasswordScreen() {
                     )}
                 </View>
             </KeyboardAwareScrollView>
+            </SafeAreaView>
         </LinearGradient>
     );
 }
@@ -153,7 +151,7 @@ const styles = StyleSheet.create({
     },
     backButton: {
         position: 'absolute',
-        top: 60,
+        top: 16,
         left: 20,
         zIndex: 10,
         padding: 8,
@@ -162,7 +160,7 @@ const styles = StyleSheet.create({
     },
     logoContainer: {
         alignItems: 'center',
-        marginTop: 60,
+        marginTop: 32,
         marginBottom: 32,
     },
     logo: {
