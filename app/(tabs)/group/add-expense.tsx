@@ -79,7 +79,11 @@ export default function AddExpenseScreen() {
     };
 
     const hideAlert = () => {
-        setAlertConfig(prev => ({ ...prev, visible: false }));
+        setAlertConfig(prev => ({
+            ...prev,
+            visible: false,
+            onPrimaryAction: undefined,
+        }));
     };
 
     useEffect(() => {

@@ -54,7 +54,11 @@ export default function ProfileScreen() {
     };
 
     const hideAlert = () => {
-        setAlertConfig(prev => ({ ...prev, visible: false }));
+        setAlertConfig(prev => ({
+            ...prev,
+            visible: false,
+            onPrimaryAction: undefined,
+        }));
     };
 
     useEffect(() => {

@@ -66,14 +66,14 @@ export const CustomAlert: React.FC<CustomAlertProps> = ({
     if (!visible) return null;
 
     const handlePrimaryAction = () => {
+        onClose();
         if (onPrimaryAction) {
             onPrimaryAction();
-        } else {
-            onClose();
         }
     };
 
     const handleSecondaryAction = () => {
+        onClose();
         if (onSecondaryAction) {
             onSecondaryAction();
         }

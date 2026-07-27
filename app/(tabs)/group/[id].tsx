@@ -103,7 +103,12 @@ export default function GroupDetailsScreen() {
     };
 
     const hideAlert = () => {
-        setAlertConfig(prev => ({ ...prev, visible: false }));
+        setAlertConfig(prev => ({
+            ...prev,
+            visible: false,
+            onPrimaryAction: undefined,
+            onSecondaryAction: undefined,
+        }));
     };
 
     const { data: group, isLoading: groupLoading, refetch: refetchGroup, isRefetching: isGroupRefetching } = useQuery({
