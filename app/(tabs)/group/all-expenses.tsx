@@ -23,7 +23,9 @@ interface Expense {
     _id: string;
     description: string;
     amount: number;
-    paidBy: { name: string };
+    paidBy: { _id?: string; name?: string } | string;
+    splitBetween?: (string | { _id: string; name?: string })[];
+    splitDetails?: { user: string | { _id: string; name?: string }; amount?: number; percentage?: number }[];
     createdBy: string | { _id: string };
     date: string;
 }
@@ -35,6 +37,7 @@ export default function AllExpensesScreen() {
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [expenseFilter, setExpenseFilter] = useState<'all' | 'paid_by_me' | 'yet_to_pay'>('all');
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState<{
@@ -168,14 +171,71 @@ export default function AllExpensesScreen() {
                     />
                 }
             >
+                {/* Filter Chips */}
+                <View style={styles.filterChipRow}>
+                    <TouchableOpacity
+                        style={[styles.filterChipButton, expenseFilter === 'all' && styles.filterChipButtonActive]}
+                        onPress={() => setExpenseFilter('all')}
+                    >
+                        <Text style={[styles.filterChipText, expenseFilter === 'all' && styles.filterChipTextActive]}>All</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.filterChipButton, expenseFilter === 'paid_by_me' && styles.filterChipButtonActive]}
+                        onPress={() => setExpenseFilter('paid_by_me')}
+                    >
+                        <Ionicons
+                            name="checkmark-circle-outline"
+                            size={14}
+                            color={expenseFilter === 'paid_by_me' ? Colors.dark.background : Colors.dark.textSecondary}
+                        />
+                        <Text style={[styles.filterChipText, expenseFilter === 'paid_by_me' && styles.filterChipTextActive]}>Paid by me</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.filterChipButton, expenseFilter === 'yet_to_pay' && styles.filterChipButtonActive]}
+                        onPress={() => setExpenseFilter('yet_to_pay')}
+                    >
+                        <Ionicons
+                            name="time-outline"
+                            size={14}
+                            color={expenseFilter === 'yet_to_pay' ? Colors.dark.background : Colors.dark.textSecondary}
+                        />
+                        <Text style={[styles.filterChipText, expenseFilter === 'yet_to_pay' && styles.filterChipTextActive]}>Yet to pay</Text>
+                    </TouchableOpacity>
+                </View>
+
                 {expenses.length === 0 ? (
                     <Text style={styles.noExpenses}>No expenses yet</Text>
-                ) : (
-                    expenses.slice().reverse().map((expense) => {
+                ) : (() => {
+                    const filtered = expenses.filter((expense) => {
+                        const paidById = typeof expense.paidBy === 'object' ? expense.paidBy?._id : expense.paidBy;
+                        const isPaidByMe = paidById === user?.id;
+
+                        if (expenseFilter === 'paid_by_me') {
+                            return isPaidByMe;
+                        }
+                        if (expenseFilter === 'yet_to_pay') {
+                            if (isPaidByMe) return false;
+                            if (expense.splitDetails && expense.splitDetails.length > 0) {
+                                return expense.splitDetails.some(sd => (typeof sd.user === 'object' ? sd.user?._id : sd.user) === user?.id);
+                            }
+                            if (expense.splitBetween && expense.splitBetween.length > 0) {
+                                return expense.splitBetween.some(sb => (typeof sb === 'object' ? sb?._id : sb) === user?.id);
+                            }
+                            return true;
+                        }
+                        return true;
+                    });
+
+                    if (filtered.length === 0) {
+                        return <Text style={styles.noExpenses}>No matching expenses found</Text>;
+                    }
+
+                    return filtered.slice().reverse().map((expense) => {
                         const createdById = typeof expense.createdBy === 'string'
                             ? expense.createdBy
                             : expense.createdBy?._id;
                         const isCreator = createdById === user?.id;
+                        const payerName = typeof expense.paidBy === 'object' ? expense.paidBy?.name : 'Unknown';
 
                         return (
                             <TouchableOpacity
@@ -187,7 +247,7 @@ export default function AllExpensesScreen() {
                                 <Avatar name={expense.description} size={40} fontSize={16} rounded={true} />
                                 <View style={styles.expenseInfo}>
                                     <Text style={styles.expenseDescription}>{expense.description}</Text>
-                                    <Text style={styles.expensePaidBy}>Paid by {expense.paidBy?.name || 'Unknown'}</Text>
+                                    <Text style={styles.expensePaidBy}>Paid by {payerName || 'Unknown'}</Text>
                                 </View>
                                 <View style={styles.expenseRight}>
                                     <Text style={styles.expenseAmount}>₹{expense.amount}</Text>
@@ -204,8 +264,8 @@ export default function AllExpensesScreen() {
                                 </View>
                             </TouchableOpacity>
                         );
-                    })
-                )}
+                    });
+                })()}
             </ScrollView>
 
             <CustomAlert
@@ -281,5 +341,35 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         paddingVertical: 32,
         fontSize: 16,
+    },
+    filterChipRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 16,
+        marginTop: 4,
+    },
+    filterChipButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderWidth: 1,
+        borderColor: Colors.dark.border,
+    },
+    filterChipButtonActive: {
+        backgroundColor: Colors.dark.primary,
+        borderColor: Colors.dark.primary,
+    },
+    filterChipText: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: Colors.dark.textSecondary,
+    },
+    filterChipTextActive: {
+        color: Colors.dark.background,
+        fontWeight: '600',
     },
 });

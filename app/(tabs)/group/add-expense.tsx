@@ -124,6 +124,11 @@ export default function AddExpenseScreen() {
                     });
                     setPercentages(initialPercentages);
                 } else {
+                    setIsEditing(false);
+                    setDescription('');
+                    setAmount('');
+                    setSplitType('equal');
+
                     // Select all members by default for new expense
                     const allIds = group.members.map((m: Member) => m._id);
                     setSelectedMembers(allIds);
