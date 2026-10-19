@@ -1,0 +1,51 @@
+export type PriorityLevel = 'low' | 'medium' | 'high';
+
+export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+export type SyncStatus = 'synced' | 'pending' | 'failed';
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  notes?: string;
+  priority: PriorityLevel;
+  isCompleted: boolean;
+  completedAt?: string | null;
+
+  // Reminder & Scheduling
+  hasReminder: boolean;
+  reminderDateTime?: string | null; // ISO 8601 string
+  notificationId?: string | null;   // Device local notification trigger ID
+
+  // Recurrence
+  recurrence: RecurrenceFrequency;
+  recurrenceCount: number;         // Counter for occurrences completed
+
+  // Category & Metadata
+  category?: string;              // e.g. 'General', 'Bills', 'Group'
+  syncStatus: SyncStatus;
+  createdAt: string;              // ISO 8601 string
+  updatedAt: string;              // ISO 8601 string
+  deletedAt?: string | null;      // Soft delete for tombstoning during cloud sync
+}
+
+export interface CreateTodoInput {
+  title: string;
+  notes?: string;
+  priority?: PriorityLevel;
+  category?: string;
+  hasReminder?: boolean;
+  reminderDateTime?: string | null;
+  recurrence?: RecurrenceFrequency;
+}
+
+export interface UpdateTodoInput {
+  title?: string;
+  notes?: string;
+  priority?: PriorityLevel;
+  category?: string;
+  isCompleted?: boolean;
+  hasReminder?: boolean;
+  reminderDateTime?: string | null;
+  recurrence?: RecurrenceFrequency;
+}

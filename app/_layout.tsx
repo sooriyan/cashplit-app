@@ -1,12 +1,15 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
+import React, { useEffect } from 'react';
+import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '../context/AuthContext';
 import { ConfigProvider } from '../context/ConfigContext';
 import { Colors } from '@/constants/Colors';
+import { todoNotificationService } from '../services/todoNotificationService';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -34,9 +37,27 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  const router = useRouter();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+
+  useEffect(() => {
+    // Initialize notification channels and settings
+    todoNotificationService.init();
+
+    // Listen for user tapping on scheduled reminder notifications
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data?.todoId || data?.type === 'todo_reminder') {
+        router.push('/(tabs)/todos' as any);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
 
   if (!loaded) {
     return null;

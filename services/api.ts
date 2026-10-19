@@ -172,6 +172,27 @@ class ApiService {
     updatePushToken(pushToken: string) {
         return this.post('/api/users/push-token', { pushToken });
     }
+
+    // To-Dos Cloud Sync
+    getTodos() {
+        return this.get('/api/todos');
+    }
+
+    createTodo(data: any) {
+        return this.post('/api/todos', data);
+    }
+
+    updateTodo(id: string, data: any) {
+        return this.put(`/api/todos/${id}`, data);
+    }
+
+    deleteTodo(id: string) {
+        return this.delete(`/api/todos/${id}`);
+    }
+
+    syncTodos(payload: { todos: any[]; lastSyncedAt?: string | null }) {
+        return this.post('/api/todos/sync', payload);
+    }
 }
 
 // Export singleton instance

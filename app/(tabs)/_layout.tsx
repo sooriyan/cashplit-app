@@ -56,6 +56,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="todos"
+        options={{
+          title: 'To-Dos',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'checkbox' : 'checkbox-outline'}
+              size={24}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
