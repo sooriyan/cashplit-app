@@ -1,14 +1,117 @@
 import { RecurrenceFrequency } from '../types/todo';
 
 /**
- * Calculates the next future occurrence timestamp based on the base date and recurrence frequency.
+ * Parses "HH:mm" 24h string into hours and minutes
+ */
+export function parseTimeString(timeStr: string): { hour: number; minute: number } {
+  const [hStr, mStr] = timeStr.split(':');
+  const hour = parseInt(hStr || '0', 10);
+  const minute = parseInt(mStr || '0', 10);
+  return {
+    hour: isNaN(hour) ? 0 : Math.min(23, Math.max(0, hour)),
+    minute: isNaN(minute) ? 0 : Math.min(59, Math.max(0, minute)),
+  };
+}
+
+/**
+ * Formats "HH:mm" 24h string to 12h display (e.g. "14:30" -> "2:30 PM")
+ */
+export function formatTime12Hour(timeStr: string): string {
+  const { hour, minute } = parseTimeString(timeStr);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`;
+}
+
+/**
+ * Sorts and deduplicates "HH:mm" time strings chronologically
+ */
+export function sortTimeStrings(times: string[]): string[] {
+  const unique = Array.from(new Set(times.filter(Boolean)));
+  return unique.sort((a, b) => {
+    const { hour: hA, minute: mA } = parseTimeString(a);
+    const { hour: hB, minute: mB } = parseTimeString(b);
+    return hA * 60 + mA - (hB * 60 + mB);
+  });
+}
+
+/**
+ * Calculates the next upcoming intra-day slot from an array of "HH:mm" times.
+ * Guarantees that the returned timestamp is strictly in the future.
+ */
+export function calculateNextIntraDaySlot(
+  dailyTimes: string[],
+  relativeTo: Date = new Date()
+): { nextIso: string; slotIndex: number; isTomorrow: boolean } {
+  if (!dailyTimes || dailyTimes.length === 0) {
+    const fallback = new Date(relativeTo.getTime() + 60 * 60 * 1000);
+    return { nextIso: fallback.toISOString(), slotIndex: 0, isTomorrow: false };
+  }
+
+  const sortedTimes = sortTimeStrings(dailyTimes);
+  const nowMs = relativeTo.getTime();
+
+  // 1. Check if any slot later today is in the future
+  for (let i = 0; i < sortedTimes.length; i++) {
+    const { hour, minute } = parseTimeString(sortedTimes[i]);
+    const candidate = new Date(
+      relativeTo.getFullYear(),
+      relativeTo.getMonth(),
+      relativeTo.getDate(),
+      hour,
+      minute,
+      0,
+      0
+    );
+
+    if (candidate.getTime() > nowMs) {
+      return {
+        nextIso: candidate.toISOString(),
+        slotIndex: i,
+        isTomorrow: false,
+      };
+    }
+  }
+
+  // 2. All slots for today have elapsed; roll over to the first slot tomorrow
+  const { hour: firstHour, minute: firstMinute } = parseTimeString(sortedTimes[0]);
+  const tomorrowCandidate = new Date(
+    relativeTo.getFullYear(),
+    relativeTo.getMonth(),
+    relativeTo.getDate() + 1,
+    firstHour,
+    firstMinute,
+    0,
+    0
+  );
+
+  return {
+    nextIso: tomorrowCandidate.toISOString(),
+    slotIndex: 0,
+    isTomorrow: true,
+  };
+}
+
+/**
+ * Calculates the next future occurrence timestamp based on base date, frequency, and optional daily slots.
  * Guarantees that the returned timestamp is strictly in the future (relative to now).
  */
 export function calculateNextOccurrence(
   baseDate: Date | string,
   frequency: RecurrenceFrequency,
-  relativeTo: Date = new Date()
+  relativeTo: Date = new Date(),
+  dailyTimes?: string[]
 ): string {
+  // Handle multiple daily slots
+  if (frequency === 'multiple_daily') {
+    if (dailyTimes && dailyTimes.length > 0) {
+      return calculateNextIntraDaySlot(dailyTimes, relativeTo).nextIso;
+    }
+    // Fallback if dailyTimes not provided: default to every 4 hours
+    const next = new Date(relativeTo.getTime() + 4 * 60 * 60 * 1000);
+    return next.toISOString();
+  }
+
   const initial = typeof baseDate === 'string' ? new Date(baseDate) : new Date(baseDate.getTime());
   
   if (isNaN(initial.getTime()) || frequency === 'none') {
@@ -18,8 +121,6 @@ export function calculateNextOccurrence(
   const next = new Date(initial.getTime());
   const nowMs = relativeTo.getTime();
 
-  // If the next date is in the future, return it directly if it hasn't triggered yet.
-  // Otherwise, iteratively advance according to the frequency until it's in the future.
   let safetyCounter = 0;
   while (next.getTime() <= nowMs && safetyCounter < 1000) {
     safetyCounter++;
@@ -36,7 +137,6 @@ export function calculateNextOccurrence(
         const currentMonth = next.getMonth();
         const currentDate = next.getDate();
         next.setMonth(currentMonth + 1);
-        // Handle end of month roll-over (e.g., Jan 31 -> Feb 28)
         if (next.getDate() < currentDate) {
           next.setDate(0);
         }
@@ -55,8 +155,15 @@ export function calculateNextOccurrence(
 /**
  * Human-readable label for recurrence frequency
  */
-export function getHumanReadableRecurrence(frequency: RecurrenceFrequency): string {
+export function getHumanReadableRecurrence(
+  frequency: RecurrenceFrequency,
+  dailyTimesCount?: number
+): string {
   switch (frequency) {
+    case 'multiple_daily':
+      return dailyTimesCount && dailyTimesCount > 1
+        ? `${dailyTimesCount}× Daily`
+        : 'Multiple times daily';
     case 'daily':
       return 'Repeats Daily';
     case 'weekly':
@@ -91,10 +198,8 @@ export function formatReminderDisplay(isoString: string | null | undefined): {
   const now = new Date();
   const isOverdue = date.getTime() < now.getTime();
 
-  // Time format: e.g. "4:30 PM"
   const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  // Compare calendar days
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const targetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diffDays = Math.round((targetDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));

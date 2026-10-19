@@ -1,6 +1,12 @@
 export type PriorityLevel = 'low' | 'medium' | 'high';
 
-export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type RecurrenceFrequency =
+  | 'none'
+  | 'daily'
+  | 'multiple_daily'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly';
 
 export type SyncStatus = 'synced' | 'pending' | 'failed';
 
@@ -14,12 +20,18 @@ export interface TodoItem {
 
   // Reminder & Scheduling
   hasReminder: boolean;
-  reminderDateTime?: string | null; // ISO 8601 string
+  reminderDateTime?: string | null; // ISO 8601 string for the currently scheduled occurrence
   notificationId?: string | null;   // Device local notification trigger ID
 
   // Recurrence
   recurrence: RecurrenceFrequency;
-  recurrenceCount: number;         // Counter for occurrences completed
+  recurrenceCount: number;         // Counter for total occurrences completed
+  
+  // Intra-Day Multiple Recurrence
+  dailyTimes?: string[];           // Array of "HH:mm" 24-hour strings, e.g. ["09:00", "14:00", "20:00"]
+  currentSlotIndex?: number;       // Index of currently active slot in dailyTimes
+  completedSlotsToday?: number;    // Counter for slots finished today (e.g. 2 of 3)
+  lastSlotCompletedDate?: string | null; // "YYYY-MM-DD" used to reset daily slot progress
 
   // Category & Metadata
   category?: string;              // e.g. 'General', 'Bills', 'Group'
@@ -37,6 +49,7 @@ export interface CreateTodoInput {
   hasReminder?: boolean;
   reminderDateTime?: string | null;
   recurrence?: RecurrenceFrequency;
+  dailyTimes?: string[];
 }
 
 export interface UpdateTodoInput {
@@ -48,4 +61,7 @@ export interface UpdateTodoInput {
   hasReminder?: boolean;
   reminderDateTime?: string | null;
   recurrence?: RecurrenceFrequency;
+  dailyTimes?: string[];
+  currentSlotIndex?: number;
+  completedSlotsToday?: number;
 }

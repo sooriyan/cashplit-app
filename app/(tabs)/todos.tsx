@@ -21,8 +21,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { TodoItem, PriorityLevel, RecurrenceFrequency } from '../../types/todo';
 import { todoStorage } from '../../services/todoStorage';
-import { formatReminderDisplay, getHumanReadableRecurrence } from '../../services/recurrenceEngine';
+import {
+  formatReminderDisplay,
+  getHumanReadableRecurrence,
+  formatTime12Hour,
+  sortTimeStrings,
+} from '../../services/recurrenceEngine';
 import { todoNotificationService } from '../../services/todoNotificationService';
+import DateTimePickerModal from '../../components/DateTimePickerModal';
 
 type FilterType = 'all' | 'pending' | 'recurring' | 'completed';
 
@@ -42,6 +48,13 @@ export default function TodosScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
 
+  // Date & Time Picker Modal State
+  const [pickerVisible, setPickerVisible] = useState(false);
+
+  // Snooze Modal State
+  const [snoozeModalVisible, setSnoozeModalVisible] = useState(false);
+  const [snoozeTargetTodo, setSnoozeTargetTodo] = useState<TodoItem | null>(null);
+
   // Form State
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -49,6 +62,8 @@ export default function TodosScreen() {
   const [category, setCategory] = useState('General');
   const [hasReminder, setHasReminder] = useState(true);
   const [recurrence, setRecurrence] = useState<RecurrenceFrequency>('none');
+  const [dailyTimes, setDailyTimes] = useState<string[]>(['09:00', '19:00']);
+  const [slotPickerVisible, setSlotPickerVisible] = useState(false);
   const [reminderDate, setReminderDate] = useState<Date>(() => {
     const d = new Date();
     d.setHours(d.getHours() + 2);
@@ -124,6 +139,7 @@ export default function TodosScreen() {
     setCategory('General');
     setHasReminder(true);
     setRecurrence('none');
+    setDailyTimes(['09:00', '19:00']);
     const defaultDate = new Date();
     defaultDate.setHours(defaultDate.getHours() + 2, 0, 0, 0);
     setReminderDate(defaultDate);
@@ -138,6 +154,7 @@ export default function TodosScreen() {
     setCategory(item.category || 'General');
     setHasReminder(item.hasReminder);
     setRecurrence(item.recurrence);
+    setDailyTimes(item.dailyTimes && item.dailyTimes.length > 0 ? item.dailyTimes : ['09:00', '19:00']);
     setReminderDate(item.reminderDateTime ? new Date(item.reminderDateTime) : new Date());
     setModalVisible(true);
   };
@@ -148,7 +165,14 @@ export default function TodosScreen() {
       return;
     }
 
+    if (recurrence === 'multiple_daily' && dailyTimes.length === 0) {
+      Alert.alert('Required', 'Please add at least one daily reminder time for multiple daily recurrence');
+      return;
+    }
+
     try {
+      const sanitizedTimes = recurrence === 'multiple_daily' ? sortTimeStrings(dailyTimes) : [];
+
       if (editingTodo) {
         await todoStorage.update(editingTodo.id, {
           title,
@@ -158,6 +182,7 @@ export default function TodosScreen() {
           hasReminder,
           reminderDateTime: hasReminder ? reminderDate.toISOString() : null,
           recurrence,
+          dailyTimes: sanitizedTimes,
         });
       } else {
         await todoStorage.create({
@@ -168,6 +193,7 @@ export default function TodosScreen() {
           hasReminder,
           reminderDateTime: hasReminder ? reminderDate.toISOString() : null,
           recurrence,
+          dailyTimes: sanitizedTimes,
         });
       }
 
@@ -212,6 +238,28 @@ export default function TodosScreen() {
         },
       },
     ]);
+  };
+
+  const openSnoozeModal = (item: TodoItem) => {
+    setSnoozeTargetTodo(item);
+    setSnoozeModalVisible(true);
+  };
+
+  const handleSnooze = async (minutes: number) => {
+    if (!snoozeTargetTodo) return;
+    try {
+      const updated = await todoStorage.snoozeTodo(snoozeTargetTodo.id, minutes);
+      if (updated) {
+        setTodos((prev) => prev.map((t) => (t.id === snoozeTargetTodo.id ? updated : t)));
+        const info = formatReminderDisplay(updated.reminderDateTime);
+        Alert.alert('⏰ Alarm Snoozed', `Reminder rescheduled for ${info.label}.`);
+      }
+    } catch (error) {
+      console.error('Error snoozing task:', error);
+    } finally {
+      setSnoozeModalVisible(false);
+      setSnoozeTargetTodo(null);
+    }
   };
 
   // Filtered Items
@@ -302,7 +350,16 @@ export default function TodosScreen() {
                 <View style={styles.recurrenceBadge}>
                   <Ionicons name="repeat" size={12} color="#60A5FA" />
                   <Text style={styles.recurrenceText}>
-                    {getHumanReadableRecurrence(item.recurrence).replace('Repeats ', '')}
+                    {getHumanReadableRecurrence(item.recurrence, item.dailyTimes?.length).replace('Repeats ', '')}
+                  </Text>
+                </View>
+              )}
+
+              {/* Intra-day Multi-Daily Progress Badge */}
+              {item.recurrence === 'multiple_daily' && item.dailyTimes && item.dailyTimes.length > 0 && !item.isCompleted && (
+                <View style={styles.intraDayProgressBadge}>
+                  <Text style={styles.intraDayProgressText}>
+                    Slot {(item.currentSlotIndex ?? 0) + 1}/{item.dailyTimes.length} ({item.completedSlotsToday ?? 0} done today)
                   </Text>
                 </View>
               )}
@@ -315,28 +372,41 @@ export default function TodosScreen() {
               ) : null}
             </View>
 
-            {/* Reminder Date / Time Pill */}
+            {/* Reminder Date / Time Pill & Snooze Button */}
             {item.hasReminder && item.reminderDateTime && !item.isCompleted && (
-              <View
-                style={[
-                  styles.reminderPill,
-                  reminderInfo.isOverdue && styles.reminderPillOverdue,
-                ]}
-              >
-                <Ionicons
-                  name={reminderInfo.isOverdue ? 'alert-circle' : 'alarm-outline'}
-                  size={13}
-                  color={reminderInfo.isOverdue ? Colors.dark.danger : Colors.dark.primary}
-                />
-                <Text
+              <View style={styles.reminderRow}>
+                <TouchableOpacity
                   style={[
-                    styles.reminderText,
-                    reminderInfo.isOverdue && styles.reminderTextOverdue,
+                    styles.reminderPill,
+                    reminderInfo.isOverdue && styles.reminderPillOverdue,
                   ]}
+                  onPress={() => openSnoozeModal(item)}
+                  activeOpacity={0.7}
                 >
-                  {reminderInfo.isOverdue ? 'Overdue: ' : 'Remind: '}
-                  {reminderInfo.label}
-                </Text>
+                  <Ionicons
+                    name={reminderInfo.isOverdue ? 'alert-circle' : 'alarm-outline'}
+                    size={13}
+                    color={reminderInfo.isOverdue ? Colors.dark.danger : Colors.dark.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.reminderText,
+                      reminderInfo.isOverdue && styles.reminderTextOverdue,
+                    ]}
+                  >
+                    {reminderInfo.isOverdue ? 'Overdue: ' : 'Remind: '}
+                    {reminderInfo.label}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.cardSnoozeBtn}
+                  onPress={() => openSnoozeModal(item)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="time-outline" size={12} color="#60A5FA" />
+                  <Text style={styles.cardSnoozeText}>Snooze</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -598,7 +668,45 @@ export default function TodosScreen() {
               {/* Reminder Details */}
               {hasReminder && (
                 <View style={styles.reminderSection}>
-                  <Text style={styles.inputLabel}>Quick Presets</Text>
+                  <View style={styles.reminderSectionHeader}>
+                    <Text style={styles.inputLabel}>Reminder Date & Time</Text>
+                    <TouchableOpacity
+                      onPress={() => setPickerVisible(true)}
+                      style={styles.openPickerBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="calendar" size={13} color={Colors.dark.primary} />
+                      <Text style={styles.openPickerBtnText}>Pick Custom</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Interactive Selected Date & Time Card */}
+                  <TouchableOpacity
+                    style={styles.dateDisplayPill}
+                    onPress={() => setPickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.dateDisplayLeft}>
+                      <View style={styles.calendarIconCircle}>
+                        <Ionicons name="calendar-outline" size={18} color={Colors.dark.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.dateDisplayText}>
+                          {formatReminderDisplay(reminderDate.toISOString()).label}
+                        </Text>
+                        <Text style={styles.dateDisplaySubtext}>
+                          Tap to select custom calendar day & time
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.changeBadge}>
+                      <Text style={styles.changeBadgeText}>Change</Text>
+                      <Ionicons name="chevron-forward" size={13} color={Colors.dark.primary} />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Quick Presets */}
+                  <Text style={[styles.inputLabel, { marginTop: 14 }]}>Or Quick Presets</Text>
                   <View style={styles.presetRow}>
                     <TouchableOpacity style={styles.presetChip} onPress={() => applyPreset('1h')}>
                       <Text style={styles.presetText}>+1 Hour</Text>
@@ -614,41 +722,104 @@ export default function TodosScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  <View style={styles.dateDisplayPill}>
-                    <Ionicons name="calendar-outline" size={16} color={Colors.dark.primary} />
-                    <Text style={styles.dateDisplayText}>
-                      {formatReminderDisplay(reminderDate.toISOString()).label}
-                    </Text>
-                  </View>
-
                   {/* Recurrence Selector */}
                   <Text style={[styles.inputLabel, { marginTop: 16 }]}>Recurrence</Text>
                   <View style={styles.recurrenceContainer}>
-                    {(['none', 'daily', 'weekly', 'monthly', 'yearly'] as RecurrenceFrequency[]).map(
-                      (freq) => {
-                        const isSelected = recurrence === freq;
-                        return (
-                          <TouchableOpacity
-                            key={freq}
+                    {([
+                      { id: 'none', label: 'Once' },
+                      { id: 'daily', label: 'Daily' },
+                      { id: 'multiple_daily', label: 'Multi-Daily' },
+                      { id: 'weekly', label: 'Weekly' },
+                      { id: 'monthly', label: 'Monthly' },
+                      { id: 'yearly', label: 'Yearly' },
+                    ] as { id: RecurrenceFrequency; label: string }[]).map((item) => {
+                      const isSelected = recurrence === item.id;
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[
+                            styles.recurrenceChoice,
+                            isSelected && styles.recurrenceChoiceSelected,
+                          ]}
+                          onPress={() => setRecurrence(item.id)}
+                        >
+                          <Text
                             style={[
-                              styles.recurrenceChoice,
-                              isSelected && styles.recurrenceChoiceSelected,
+                              styles.recurrenceChoiceText,
+                              isSelected && styles.recurrenceChoiceTextSelected,
                             ]}
-                            onPress={() => setRecurrence(freq)}
                           >
-                            <Text
-                              style={[
-                                styles.recurrenceChoiceText,
-                                isSelected && styles.recurrenceChoiceTextSelected,
-                              ]}
-                            >
-                              {freq === 'none' ? 'Once' : freq.charAt(0).toUpperCase() + freq.slice(1)}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      }
-                    )}
+                            {item.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
+
+                  {/* Multi-Daily Intra-day Slot Configurator */}
+                  {recurrence === 'multiple_daily' && (
+                    <View style={styles.multiDailySection}>
+                      <View style={styles.multiDailyHeader}>
+                        <View>
+                          <Text style={styles.multiDailyTitle}>Daily Reminder Times</Text>
+                          <Text style={styles.multiDailySubtitle}>
+                            Alarms scheduled across the day
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.addSlotBtn}
+                          onPress={() => setSlotPickerVisible(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="add" size={15} color="#0D0D0D" />
+                          <Text style={styles.addSlotBtnText}>Add Time</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Configured Slot Chips */}
+                      <View style={styles.slotsChipRow}>
+                        {dailyTimes.map((timeStr, idx) => (
+                          <View key={`${timeStr}-${idx}`} style={styles.slotChip}>
+                            <Ionicons name="time-outline" size={13} color="#60A5FA" />
+                            <Text style={styles.slotChipText}>{formatTime12Hour(timeStr)}</Text>
+                            {dailyTimes.length > 1 && (
+                              <TouchableOpacity
+                                onPress={() =>
+                                  setDailyTimes((prev) => prev.filter((_, i) => i !== idx))
+                                }
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Ionicons name="close-circle" size={16} color={Colors.dark.danger} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        ))}
+                      </View>
+
+                      {/* Quick Schedule Presets */}
+                      <Text style={styles.slotPresetLabel}>Or Quick Daily Schedules:</Text>
+                      <View style={styles.slotPresetRow}>
+                        <TouchableOpacity
+                          style={styles.slotPresetChip}
+                          onPress={() => setDailyTimes(['09:00', '19:00'])}
+                        >
+                          <Text style={styles.slotPresetText}>2× (9 AM, 7 PM)</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.slotPresetChip}
+                          onPress={() => setDailyTimes(['08:00', '13:00', '20:00'])}
+                        >
+                          <Text style={styles.slotPresetText}>3× (8 AM, 1 PM, 8 PM)</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.slotPresetChip}
+                          onPress={() => setDailyTimes(['08:00', '12:00', '16:00', '20:00'])}
+                        >
+                          <Text style={styles.slotPresetText}>4× (Every 4h)</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
             </ScrollView>
@@ -681,6 +852,141 @@ export default function TodosScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Date & Time Picker Modal */}
+      <DateTimePickerModal
+        visible={pickerVisible}
+        initialDate={reminderDate}
+        onConfirm={(chosenDate) => {
+          setReminderDate(chosenDate);
+          setHasReminder(true);
+          setPickerVisible(false);
+        }}
+        onCancel={() => setPickerVisible(false)}
+      />
+
+      {/* Intra-day Multi-Daily Time Slot Picker Modal */}
+      <DateTimePickerModal
+        visible={slotPickerVisible}
+        initialDate={new Date()}
+        title="Add Daily Reminder Time"
+        subtitle="Choose daily alarm time (e.g. 02:00 PM)"
+        timeOnly={true}
+        initialTab="time"
+        onConfirm={(chosenDate) => {
+          const h = chosenDate.getHours().toString().padStart(2, '0');
+          const m = chosenDate.getMinutes().toString().padStart(2, '0');
+          const newSlot = `${h}:${m}`;
+          setDailyTimes((prev) => {
+            if (prev.includes(newSlot)) return prev;
+            return sortTimeStrings([...prev, newSlot]);
+          });
+          setSlotPickerVisible(false);
+        }}
+        onCancel={() => setSlotPickerVisible(false)}
+      />
+
+      {/* Interactive Snooze Options Modal */}
+      <Modal
+        visible={snoozeModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSnoozeModalVisible(false)}
+      >
+        <View style={styles.snoozeOverlay}>
+          <View style={styles.snoozeContainer}>
+            <View style={styles.snoozeHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.snoozeTitle}>Snooze Reminder</Text>
+                <Text style={styles.snoozeSubtitle} numberOfLines={1}>
+                  "{snoozeTargetTodo?.title}"
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setSnoozeModalVisible(false)}
+                style={styles.snoozeCloseBtn}
+              >
+                <Ionicons name="close" size={20} color={Colors.dark.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.snoozeOptionsList}>
+              <TouchableOpacity
+                style={styles.snoozeOptionBtn}
+                onPress={() => handleSnooze(15)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.snoozeIconCircle}>
+                  <Ionicons name="time-outline" size={18} color="#60A5FA" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.snoozeOptionTitle}>Snooze for 15 minutes</Text>
+                  <Text style={styles.snoozeOptionSubtitle}>Short break</Text>
+                </View>
+                <Text style={styles.snoozeBadgeText}>+15m</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.snoozeOptionBtn}
+                onPress={() => handleSnooze(30)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.snoozeIconCircle}>
+                  <Ionicons name="time-outline" size={18} color="#60A5FA" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.snoozeOptionTitle}>Snooze for 30 minutes</Text>
+                  <Text style={styles.snoozeOptionSubtitle}>Standard delay</Text>
+                </View>
+                <Text style={styles.snoozeBadgeText}>+30m</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.snoozeOptionBtn}
+                onPress={() => handleSnooze(60)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.snoozeIconCircle}>
+                  <Ionicons name="time-outline" size={18} color="#60A5FA" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.snoozeOptionTitle}>Snooze for 1 hour</Text>
+                  <Text style={styles.snoozeOptionSubtitle}>Remind me later today</Text>
+                </View>
+                <Text style={styles.snoozeBadgeText}>+1h</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.snoozeOptionBtn}
+                onPress={() => {
+                  const tomorrow9 = new Date();
+                  tomorrow9.setDate(tomorrow9.getDate() + 1);
+                  tomorrow9.setHours(9, 0, 0, 0);
+                  const diffMinutes = Math.max(1, Math.round((tomorrow9.getTime() - Date.now()) / 60000));
+                  handleSnooze(diffMinutes);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.snoozeIconCircle, { backgroundColor: 'rgba(255, 187, 40, 0.15)' }]}>
+                  <Ionicons name="sunny-outline" size={18} color={Colors.dark.warning} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.snoozeOptionTitle}>Tomorrow Morning</Text>
+                  <Text style={styles.snoozeOptionSubtitle}>Tomorrow at 9:00 AM</Text>
+                </View>
+                <Text style={[styles.snoozeBadgeText, { color: Colors.dark.warning }]}>9 AM</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.snoozeCancelBtn}
+              onPress={() => setSnoozeModalVisible(false)}
+            >
+              <Text style={styles.snoozeCancelText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -1178,5 +1484,278 @@ const styles = StyleSheet.create({
     color: '#0D0D0D',
     fontSize: 15,
     fontWeight: '800',
+  },
+  // Snooze and DateTime Picker styles
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  cardSnoozeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.3)',
+  },
+  cardSnoozeText: {
+    fontSize: 11,
+    color: '#60A5FA',
+    fontWeight: '700',
+  },
+  reminderSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  openPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.primaryFaded,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 5,
+    borderWidth: 1,
+    borderColor: Colors.dark.primary,
+  },
+  openPickerBtnText: {
+    fontSize: 11,
+    color: Colors.dark.primary,
+    fontWeight: '700',
+  },
+  dateDisplayLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  calendarIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(19, 236, 109, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateDisplaySubtext: {
+    fontSize: 11,
+    color: Colors.dark.textMuted,
+    marginTop: 1,
+  },
+  changeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.cardHover,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 2,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  changeBadgeText: {
+    fontSize: 11,
+    color: Colors.dark.primary,
+    fontWeight: '700',
+  },
+  // Snooze Modal Styles
+  snoozeOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  snoozeContainer: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  snoozeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  snoozeTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.dark.text,
+  },
+  snoozeSubtitle: {
+    fontSize: 13,
+    color: Colors.dark.textSecondary,
+    marginTop: 3,
+  },
+  snoozeCloseBtn: {
+    padding: 4,
+  },
+  snoozeOptionsList: {
+    gap: 10,
+  },
+  snoozeOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.background,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    gap: 12,
+  },
+  snoozeIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  snoozeOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.dark.text,
+  },
+  snoozeOptionSubtitle: {
+    fontSize: 11,
+    color: Colors.dark.textMuted,
+    marginTop: 1,
+  },
+  snoozeBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#60A5FA',
+    backgroundColor: 'rgba(96, 165, 250, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  snoozeCancelBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    backgroundColor: Colors.dark.background,
+  },
+  snoozeCancelText: {
+    color: Colors.dark.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Multi-Daily Intra-day Recurrence & Progress Styles
+  intraDayProgressBadge: {
+    backgroundColor: 'rgba(96, 165, 250, 0.12)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.25)',
+  },
+  intraDayProgressText: {
+    fontSize: 10,
+    color: '#60A5FA',
+    fontWeight: '700',
+  },
+  multiDailySection: {
+    marginTop: 14,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  multiDailyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  multiDailyTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.dark.text,
+  },
+  multiDailySubtitle: {
+    fontSize: 11,
+    color: Colors.dark.textMuted,
+    marginTop: 1,
+  },
+  addSlotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 4,
+  },
+  addSlotBtnText: {
+    fontSize: 11,
+    color: '#0D0D0D',
+    fontWeight: '800',
+  },
+  slotsChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  slotChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.3)',
+  },
+  slotChipText: {
+    fontSize: 12,
+    color: '#60A5FA',
+    fontWeight: '700',
+  },
+  slotPresetLabel: {
+    fontSize: 11,
+    color: Colors.dark.textMuted,
+    fontWeight: '600',
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  slotPresetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  slotPresetChip: {
+    backgroundColor: Colors.dark.background,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  slotPresetText: {
+    fontSize: 11,
+    color: Colors.dark.textSecondary,
+    fontWeight: '600',
   },
 });

@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { CreateTodoInput, TodoItem, UpdateTodoInput } from '../types/todo';
 import { todoNotificationService } from './todoNotificationService';
-import { calculateNextOccurrence } from './recurrenceEngine';
+import { calculateNextOccurrence, calculateNextIntraDaySlot } from './recurrenceEngine';
 import api from './api';
 
 const TODOS_STORAGE_KEY = 'cashplit_todos_storage_v2';
@@ -16,8 +16,20 @@ class TodoStorageService {
       const raw = await SecureStore.getItemAsync(TODOS_STORAGE_KEY);
       if (!raw) return [];
       const items: TodoItem[] = JSON.parse(raw);
-      // Filter out permanently deleted items
-      return items.filter((item) => !item.deletedAt);
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      // Filter out permanently deleted items & perform date-rollover reset for multiple_daily
+      return items
+        .filter((item) => !item.deletedAt)
+        .map((item) => {
+          if (item.recurrence === 'multiple_daily' && item.lastSlotCompletedDate !== todayStr) {
+            return {
+              ...item,
+              completedSlotsToday: 0,
+            };
+          }
+          return item;
+        });
     } catch (error) {
       console.warn('[TodoStorageService] Failed to read local todos:', error);
       return [];
@@ -55,6 +67,16 @@ class TodoStorageService {
     const id = 'todo_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
     const nowIso = new Date().toISOString();
 
+    const isMultiDaily = input.recurrence === 'multiple_daily' && input.dailyTimes && input.dailyTimes.length > 0;
+    let initialReminderTime = input.reminderDateTime || null;
+    let initialSlotIndex = 0;
+
+    if (isMultiDaily) {
+      const slotResult = calculateNextIntraDaySlot(input.dailyTimes!, new Date());
+      initialReminderTime = slotResult.nextIso;
+      initialSlotIndex = slotResult.slotIndex;
+    }
+
     const newTodo: TodoItem = {
       id,
       title: input.title.trim(),
@@ -63,11 +85,15 @@ class TodoStorageService {
       category: input.category || 'General',
       isCompleted: false,
       completedAt: null,
-      hasReminder: Boolean(input.hasReminder && input.reminderDateTime),
-      reminderDateTime: input.reminderDateTime || null,
+      hasReminder: Boolean(input.hasReminder && initialReminderTime),
+      reminderDateTime: initialReminderTime,
       notificationId: null,
       recurrence: input.recurrence || 'none',
       recurrenceCount: 0,
+      dailyTimes: input.dailyTimes || [],
+      currentSlotIndex: initialSlotIndex,
+      completedSlotsToday: 0,
+      lastSlotCompletedDate: nowIso.slice(0, 10),
       syncStatus: 'pending',
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -108,11 +134,20 @@ class TodoStorageService {
       syncStatus: 'pending',
     };
 
+    // If recurrence or dailyTimes changed to multiple_daily, recalculate next slot
+    if (input.recurrence === 'multiple_daily' && input.dailyTimes && input.dailyTimes.length > 0) {
+      const slotResult = calculateNextIntraDaySlot(input.dailyTimes, new Date());
+      updatedTodo.reminderDateTime = slotResult.nextIso;
+      updatedTodo.currentSlotIndex = slotResult.slotIndex;
+      updatedTodo.dailyTimes = input.dailyTimes;
+    }
+
     // Check if reminder parameters changed
     const reminderChanged =
       input.hasReminder !== undefined ||
       input.reminderDateTime !== undefined ||
-      input.recurrence !== undefined;
+      input.recurrence !== undefined ||
+      input.dailyTimes !== undefined;
 
     if (reminderChanged) {
       if (updatedTodo.hasReminder && updatedTodo.reminderDateTime && !updatedTodo.isCompleted) {
@@ -147,9 +182,34 @@ class TodoStorageService {
 
     if (!current.isCompleted) {
       // User is completing the task
-      if (current.recurrence !== 'none' && current.reminderDateTime) {
-        // Recurring task: advance reminder date to the next cycle
-        const nextIso = calculateNextOccurrence(current.reminderDateTime, current.recurrence);
+      if (current.recurrence === 'multiple_daily' && current.dailyTimes && current.dailyTimes.length > 0) {
+        const todayStr = nowIso.slice(0, 10);
+        if (current.lastSlotCompletedDate !== todayStr) {
+          current.completedSlotsToday = 0;
+        }
+        current.completedSlotsToday = (current.completedSlotsToday || 0) + 1;
+        current.lastSlotCompletedDate = todayStr;
+        current.recurrenceCount += 1;
+        current.updatedAt = nowIso;
+        current.syncStatus = 'pending';
+
+        // Advance to next intra-day slot
+        const nextSlot = calculateNextIntraDaySlot(current.dailyTimes, new Date());
+        current.reminderDateTime = nextSlot.nextIso;
+        current.currentSlotIndex = nextSlot.slotIndex;
+
+        // Reschedule notification for next slot
+        const notifId = await todoNotificationService.scheduleReminder(current);
+        current.notificationId = notifId;
+        wasRecurringAdvanced = true;
+      } else if (current.recurrence !== 'none' && current.reminderDateTime) {
+        // Standard recurring task: advance reminder date to the next cycle
+        const nextIso = calculateNextOccurrence(
+          current.reminderDateTime,
+          current.recurrence,
+          new Date(),
+          current.dailyTimes
+        );
         current.reminderDateTime = nextIso;
         current.recurrenceCount += 1;
         current.updatedAt = nowIso;
@@ -189,6 +249,36 @@ class TodoStorageService {
 
     this.syncWithCloud().catch(() => {});
     return { todo: current, wasRecurringAdvanced };
+  }
+
+  /**
+   * Snooze a task reminder by N minutes (e.g. 15, 30, 60 minutes)
+   */
+  async snoozeTodo(id: string, minutes: number): Promise<TodoItem | null> {
+    const rawItems = await this.getRaw();
+    const index = rawItems.findIndex((t) => t.id === id);
+    if (index === -1) return null;
+
+    const current = rawItems[index];
+    const now = new Date();
+    const newReminderTime = new Date(now.getTime() + minutes * 60 * 1000).toISOString();
+
+    current.hasReminder = true;
+    current.reminderDateTime = newReminderTime;
+    current.isCompleted = false;
+    current.completedAt = null;
+    current.updatedAt = now.toISOString();
+    current.syncStatus = 'pending';
+
+    // Reschedule device alarm for the new snoozed time
+    const notifId = await todoNotificationService.scheduleReminder(current);
+    current.notificationId = notifId;
+
+    rawItems[index] = current;
+    await this.writeRaw(rawItems);
+
+    this.syncWithCloud().catch(() => {});
+    return current;
   }
 
   /**

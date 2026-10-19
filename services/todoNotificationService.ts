@@ -3,13 +3,22 @@ import { Platform } from 'react-native';
 import { TodoItem } from '../types/todo';
 import { calculateNextOccurrence } from './recurrenceEngine';
 
+export const TODO_NOTIFICATION_CATEGORY = 'TODO_REMINDER_ACTIONS';
+
+export const TODO_ACTIONS = {
+  MARK_DONE: 'ACTION_MARK_DONE',
+  SNOOZE_15: 'ACTION_SNOOZE_15',
+  SNOOZE_30: 'ACTION_SNOOZE_30',
+  SNOOZE_60: 'ACTION_SNOOZE_60',
+} as const;
+
 const REMINDER_CHANNEL_ID = 'cashplit-todo-reminders';
 
 class TodoNotificationService {
   private isInitialized = false;
 
   /**
-   * Initializes notification channels and foreground presentation rules
+   * Initializes notification channels, action categories, and foreground presentation rules
    */
   async init(): Promise<void> {
     if (this.isInitialized) return;
@@ -35,6 +44,42 @@ class TodoNotificationService {
         enableVibrate: true,
         showBadge: true,
       });
+    }
+
+    // Register interactive notification action buttons (Mark Done, Snooze 15m, Snooze 30m, Snooze 1h)
+    try {
+      await Notifications.setNotificationCategoryAsync(TODO_NOTIFICATION_CATEGORY, [
+        {
+          identifier: TODO_ACTIONS.MARK_DONE,
+          buttonTitle: '✓ Mark Done',
+          options: {
+            opensAppToForeground: false,
+          },
+        },
+        {
+          identifier: TODO_ACTIONS.SNOOZE_15,
+          buttonTitle: '⏰ Snooze 15m',
+          options: {
+            opensAppToForeground: false,
+          },
+        },
+        {
+          identifier: TODO_ACTIONS.SNOOZE_30,
+          buttonTitle: '⏰ Snooze 30m',
+          options: {
+            opensAppToForeground: false,
+          },
+        },
+        {
+          identifier: TODO_ACTIONS.SNOOZE_60,
+          buttonTitle: '⏰ Snooze 1h',
+          options: {
+            opensAppToForeground: false,
+          },
+        },
+      ]);
+    } catch (catError) {
+      console.warn('[TodoNotificationService] Failed to set notification category:', catError);
     }
 
     this.isInitialized = true;
@@ -80,7 +125,12 @@ class TodoNotificationService {
     // If date is in the past and item has recurrence, advance it to next occurrence
     if (triggerDate.getTime() <= now.getTime()) {
       if (todo.recurrence !== 'none') {
-        const nextIso = calculateNextOccurrence(todo.reminderDateTime, todo.recurrence, now);
+        const nextIso = calculateNextOccurrence(
+          todo.reminderDateTime,
+          todo.recurrence,
+          now,
+          todo.dailyTimes
+        );
         triggerDate = new Date(nextIso);
       } else {
         console.log(`[TodoNotificationService] Reminder is in the past for task: "${todo.title}"`);
@@ -102,7 +152,14 @@ class TodoNotificationService {
     try {
       await this.init();
 
-      const subtitle = todo.recurrence !== 'none' ? `🔁 Repeat: ${todo.recurrence}` : undefined;
+      let subtitle: string | undefined = undefined;
+      if (todo.recurrence === 'multiple_daily' && todo.dailyTimes && todo.dailyTimes.length > 0) {
+        const slotNum = (todo.currentSlotIndex ?? 0) + 1;
+        subtitle = `🔁 ${todo.dailyTimes.length}× Daily (Slot ${slotNum}/${todo.dailyTimes.length})`;
+      } else if (todo.recurrence !== 'none') {
+        subtitle = `🔁 Repeat: ${todo.recurrence}`;
+      }
+
       const body = todo.notes ? todo.notes.slice(0, 120) : 'Tap to open your task';
 
       const notificationId = await Notifications.scheduleNotificationAsync({
@@ -115,6 +172,7 @@ class TodoNotificationService {
             recurrence: todo.recurrence,
             type: 'todo_reminder',
           },
+          categoryIdentifier: TODO_NOTIFICATION_CATEGORY,
           sound: 'default',
           priority: Notifications.AndroidNotificationPriority.MAX,
         },
