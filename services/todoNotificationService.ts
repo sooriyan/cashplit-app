@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { TodoItem } from '../types/todo';
-import { calculateNextOccurrence } from './recurrenceEngine';
+import { calculateUpcomingOccurrences } from './recurrenceEngine';
 
 export const TODO_NOTIFICATION_CATEGORY = 'TODO_REMINDER_ACTIONS';
 
@@ -43,38 +43,41 @@ class TodoNotificationService {
         sound: 'default',
         enableVibrate: true,
         showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
       });
     }
 
-    // Register interactive notification action buttons (Mark Done, Snooze 15m, Snooze 30m, Snooze 1h)
+    // Register interactive notification action buttons
+    // opensAppToForeground: true ensures actions awaken the app to execute state update when phone is locked/killed
     try {
       await Notifications.setNotificationCategoryAsync(TODO_NOTIFICATION_CATEGORY, [
         {
           identifier: TODO_ACTIONS.MARK_DONE,
           buttonTitle: '✓ Mark Done',
           options: {
-            opensAppToForeground: false,
+            opensAppToForeground: true,
           },
         },
         {
           identifier: TODO_ACTIONS.SNOOZE_15,
           buttonTitle: '⏰ Snooze 15m',
           options: {
-            opensAppToForeground: false,
+            opensAppToForeground: true,
           },
         },
         {
           identifier: TODO_ACTIONS.SNOOZE_30,
           buttonTitle: '⏰ Snooze 30m',
           options: {
-            opensAppToForeground: false,
+            opensAppToForeground: true,
           },
         },
         {
           identifier: TODO_ACTIONS.SNOOZE_60,
           buttonTitle: '⏰ Snooze 1h',
           options: {
-            opensAppToForeground: false,
+            opensAppToForeground: true,
           },
         },
       ]);
@@ -112,93 +115,107 @@ class TodoNotificationService {
   }
 
   /**
-   * Schedule or update a reminder for a TodoItem
+   * Schedules a rolling lookahead buffer of notifications for a TodoItem (next 7 days / up to 14 occurrences).
+   * Guarantees notifications continue to fire even if the app remains closed for days.
    */
-  async scheduleReminder(todo: TodoItem): Promise<string | null> {
+  async scheduleReminder(todo: TodoItem): Promise<{ primaryId: string | null; allIds: string[] }> {
     if (!todo.hasReminder || !todo.reminderDateTime) {
-      return null;
+      return { primaryId: null, allIds: [] };
     }
 
-    let triggerDate = new Date(todo.reminderDateTime);
-    const now = new Date();
-
-    // If date is in the past and item has recurrence, advance it to next occurrence
-    if (triggerDate.getTime() <= now.getTime()) {
-      if (todo.recurrence !== 'none') {
-        const nextIso = calculateNextOccurrence(
-          todo.reminderDateTime,
-          todo.recurrence,
-          now,
-          todo.dailyTimes
-        );
-        triggerDate = new Date(nextIso);
-      } else {
-        console.log(`[TodoNotificationService] Reminder is in the past for task: "${todo.title}"`);
-        return null;
-      }
-    }
-
-    // Cancel existing notification if one was previously scheduled
-    if (todo.notificationId) {
-      await this.cancelReminder(todo.notificationId);
+    // Cancel existing notifications (both single and buffer array)
+    const existingIds = [
+      ...(todo.notificationIds || []),
+      ...(todo.notificationId ? [todo.notificationId] : []),
+    ];
+    if (existingIds.length > 0) {
+      await this.cancelReminder(existingIds);
     }
 
     const hasPermission = await this.requestPermissions();
     if (!hasPermission) {
       console.warn('[TodoNotificationService] Cannot schedule: permissions not granted');
-      return null;
+      return { primaryId: null, allIds: [] };
     }
 
     try {
       await this.init();
 
-      let subtitle: string | undefined = undefined;
-      if (todo.recurrence === 'multiple_daily' && todo.dailyTimes && todo.dailyTimes.length > 0) {
-        const slotNum = (todo.currentSlotIndex ?? 0) + 1;
-        subtitle = `🔁 ${todo.dailyTimes.length}× Daily (Slot ${slotNum}/${todo.dailyTimes.length})`;
-      } else if (todo.recurrence !== 'none') {
-        subtitle = `🔁 Repeat: ${todo.recurrence}`;
+      // Calculate upcoming occurrences for the 7-day rolling lookahead buffer
+      const upcoming = calculateUpcomingOccurrences(
+        todo.reminderDateTime,
+        todo.recurrence,
+        new Date(),
+        todo.dailyTimes,
+        14, // max 14 upcoming slots in OS queue (well within iOS 64 limit)
+        7   // 7 days ahead rolling lookahead window
+      );
+
+      if (upcoming.length === 0) {
+        console.log(`[TodoNotificationService] No future occurrences for task: "${todo.title}"`);
+        return { primaryId: null, allIds: [] };
       }
 
       const body = todo.notes ? todo.notes.slice(0, 120) : 'Tap to open your task';
+      const scheduledIds: string[] = [];
 
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `📌 Task: ${todo.title}`,
-          subtitle,
-          body,
-          data: {
-            todoId: todo.id,
-            recurrence: todo.recurrence,
-            type: 'todo_reminder',
-          },
-          categoryIdentifier: TODO_NOTIFICATION_CATEGORY,
-          sound: 'default',
-          priority: Notifications.AndroidNotificationPriority.MAX,
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: triggerDate,
-          channelId: REMINDER_CHANNEL_ID,
-        },
-      });
+      for (const occ of upcoming) {
+        try {
+          const notificationId = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `📌 Task: ${todo.title}`,
+              subtitle: occ.subtitle,
+              body,
+              data: {
+                todoId: todo.id,
+                recurrence: todo.recurrence,
+                type: 'todo_reminder',
+                slotIndex: occ.slotIndex,
+                scheduledFor: occ.triggerDate.toISOString(),
+              },
+              categoryIdentifier: TODO_NOTIFICATION_CATEGORY,
+              sound: 'default',
+              priority: Notifications.AndroidNotificationPriority.MAX,
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: occ.triggerDate,
+              channelId: REMINDER_CHANNEL_ID,
+            },
+          });
+          scheduledIds.push(notificationId);
+        } catch (slotError) {
+          console.warn('[TodoNotificationService] Failed to schedule buffer slot:', slotError);
+        }
+      }
 
-      return notificationId;
+      return {
+        primaryId: scheduledIds[0] || null,
+        allIds: scheduledIds,
+      };
     } catch (error) {
-      console.error('[TodoNotificationService] Failed to schedule reminder:', error);
-      return null;
+      console.error('[TodoNotificationService] Failed to schedule reminder buffer:', error);
+      return { primaryId: null, allIds: [] };
     }
   }
 
   /**
-   * Cancel an existing notification by its ID
+   * Cancel an existing notification by its ID or array of IDs
    */
-  async cancelReminder(notificationId: string): Promise<void> {
-    try {
-      await Notifications.cancelScheduledNotificationAsync(notificationId);
-    } catch (error) {
-      console.warn(`[TodoNotificationService] Could not cancel notification ${notificationId}:`, error);
-    }
+  async cancelReminder(target?: string | string[] | null): Promise<void> {
+    if (!target) return;
+    const ids = Array.isArray(target) ? target : [target];
+    const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+
+    await Promise.all(
+      uniqueIds.map(async (id) => {
+        try {
+          await Notifications.cancelScheduledNotificationAsync(id);
+        } catch (error) {
+          console.warn(`[TodoNotificationService] Could not cancel notification ${id}:`, error);
+        }
+      })
+    );
   }
 
   /**

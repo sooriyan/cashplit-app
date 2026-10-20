@@ -21,7 +21,8 @@ export interface TodoItem {
   // Reminder & Scheduling
   hasReminder: boolean;
   reminderDateTime?: string | null; // ISO 8601 string for the currently scheduled occurrence
-  notificationId?: string | null;   // Device local notification trigger ID
+  notificationId?: string | null;   // Device local notification trigger ID (primary next slot)
+  notificationIds?: string[];      // Array of scheduled notification IDs for rolling buffer window
 
   // Recurrence
   recurrence: RecurrenceFrequency;

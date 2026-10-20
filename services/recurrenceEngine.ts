@@ -152,6 +152,106 @@ export function calculateNextOccurrence(
   return next.toISOString();
 }
 
+export interface UpcomingOccurrence {
+  triggerDate: Date;
+  slotIndex?: number;
+  subtitle?: string;
+}
+
+/**
+ * Calculates a rolling lookahead window of upcoming occurrences (e.g. next 7 days / up to maxCount).
+ * Ensures scheduled notifications fire continuously even if the app remains closed for days.
+ */
+export function calculateUpcomingOccurrences(
+  baseDate: Date | string,
+  frequency: RecurrenceFrequency,
+  relativeTo: Date = new Date(),
+  dailyTimes?: string[],
+  maxCount = 14,
+  maxDaysAhead = 7
+): UpcomingOccurrence[] {
+  const occurrences: UpcomingOccurrence[] = [];
+  const nowMs = relativeTo.getTime();
+  const maxHorizonMs = nowMs + maxDaysAhead * 24 * 60 * 60 * 1000;
+
+  if (frequency === 'none') {
+    const d = typeof baseDate === 'string' ? new Date(baseDate) : new Date(baseDate.getTime());
+    if (d.getTime() > nowMs) {
+      occurrences.push({ triggerDate: d });
+    }
+    return occurrences;
+  }
+
+  if (frequency === 'multiple_daily') {
+    if (!dailyTimes || dailyTimes.length === 0) return occurrences;
+    const sortedTimes = sortTimeStrings(dailyTimes);
+
+    // Iterate through today (day 0) and next maxDaysAhead days
+    for (let dayOffset = 0; dayOffset <= maxDaysAhead; dayOffset++) {
+      const curDay = new Date(
+        relativeTo.getFullYear(),
+        relativeTo.getMonth(),
+        relativeTo.getDate() + dayOffset,
+        0, 0, 0, 0
+      );
+
+      for (let sIdx = 0; sIdx < sortedTimes.length; sIdx++) {
+        const { hour, minute } = parseTimeString(sortedTimes[sIdx]);
+        const slotDate = new Date(
+          curDay.getFullYear(),
+          curDay.getMonth(),
+          curDay.getDate(),
+          hour,
+          minute,
+          0,
+          0
+        );
+
+        if (slotDate.getTime() > nowMs && slotDate.getTime() <= maxHorizonMs) {
+          occurrences.push({
+            triggerDate: slotDate,
+            slotIndex: sIdx,
+            subtitle: `🔁 ${sortedTimes.length}× Daily (Slot ${sIdx + 1}/${sortedTimes.length})`,
+          });
+          if (occurrences.length >= maxCount) {
+            return occurrences;
+          }
+        }
+      }
+    }
+    return occurrences;
+  }
+
+  // Single recurrence frequency: daily, weekly, monthly, yearly
+  let currentRef = relativeTo;
+  let safetyCounter = 0;
+
+  while (occurrences.length < maxCount && safetyCounter < 50) {
+    safetyCounter++;
+    const nextIso = calculateNextOccurrence(baseDate, frequency, currentRef);
+    const nextDate = new Date(nextIso);
+
+    if (nextDate.getTime() <= currentRef.getTime()) {
+      break;
+    }
+    if (nextDate.getTime() > maxHorizonMs) {
+      break;
+    }
+
+    if (nextDate.getTime() > nowMs) {
+      occurrences.push({
+        triggerDate: nextDate,
+        subtitle: `🔁 Repeat: ${frequency}`,
+      });
+    }
+
+    // Advance reference point by 1 second past nextDate to get subsequent occurrence
+    currentRef = new Date(nextDate.getTime() + 1000);
+  }
+
+  return occurrences;
+}
+
 /**
  * Human-readable label for recurrence frequency
  */

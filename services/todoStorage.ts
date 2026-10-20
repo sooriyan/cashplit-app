@@ -18,11 +18,15 @@ class TodoStorageService {
       const items: TodoItem[] = JSON.parse(raw);
       const todayStr = new Date().toISOString().slice(0, 10);
 
+      let needsSave = false;
+      const nowMs = Date.now();
+
       // Filter out permanently deleted items & perform date-rollover reset for multiple_daily
-      return items
+      const processed = items
         .filter((item) => !item.deletedAt)
         .map((item) => {
           if (item.recurrence === 'multiple_daily' && item.lastSlotCompletedDate !== todayStr) {
+            needsSave = true;
             return {
               ...item,
               completedSlotsToday: 0,
@@ -30,6 +34,31 @@ class TodoStorageService {
           }
           return item;
         });
+
+      // Proactively replenish 7-day lookahead notification buffers if depleted or overdue
+      for (const item of processed) {
+        if (!item.isCompleted && item.hasReminder && item.reminderDateTime) {
+          const reminderMs = new Date(item.reminderDateTime).getTime();
+          const needsBufferFill =
+            !item.notificationIds ||
+            item.notificationIds.length === 0 ||
+            (item.recurrence !== 'none' && reminderMs <= nowMs);
+
+          if (needsBufferFill) {
+            todoNotificationService.scheduleReminder(item).then((res) => {
+              item.notificationId = res.primaryId;
+              item.notificationIds = res.allIds;
+              this.writeRaw(items).catch(() => {});
+            }).catch(() => {});
+          }
+        }
+      }
+
+      if (needsSave) {
+        this.writeRaw(items).catch(() => {});
+      }
+
+      return processed;
     } catch (error) {
       console.warn('[TodoStorageService] Failed to read local todos:', error);
       return [];
@@ -99,10 +128,11 @@ class TodoStorageService {
       updatedAt: nowIso,
     };
 
-    // Schedule notification if reminder set
+    // Schedule notification lookahead buffer if reminder set
     if (newTodo.hasReminder && newTodo.reminderDateTime) {
-      const notifId = await todoNotificationService.scheduleReminder(newTodo);
-      newTodo.notificationId = notifId;
+      const { primaryId, allIds } = await todoNotificationService.scheduleReminder(newTodo);
+      newTodo.notificationId = primaryId;
+      newTodo.notificationIds = allIds;
     }
 
     rawItems.unshift(newTodo);
@@ -151,11 +181,13 @@ class TodoStorageService {
 
     if (reminderChanged) {
       if (updatedTodo.hasReminder && updatedTodo.reminderDateTime && !updatedTodo.isCompleted) {
-        const notifId = await todoNotificationService.scheduleReminder(updatedTodo);
-        updatedTodo.notificationId = notifId;
-      } else if (updatedTodo.notificationId) {
-        await todoNotificationService.cancelReminder(updatedTodo.notificationId);
+        const { primaryId, allIds } = await todoNotificationService.scheduleReminder(updatedTodo);
+        updatedTodo.notificationId = primaryId;
+        updatedTodo.notificationIds = allIds;
+      } else if (updatedTodo.notificationId || (updatedTodo.notificationIds && updatedTodo.notificationIds.length > 0)) {
+        await todoNotificationService.cancelReminder(updatedTodo.notificationIds || updatedTodo.notificationId);
         updatedTodo.notificationId = null;
+        updatedTodo.notificationIds = [];
       }
     }
 
@@ -198,9 +230,10 @@ class TodoStorageService {
         current.reminderDateTime = nextSlot.nextIso;
         current.currentSlotIndex = nextSlot.slotIndex;
 
-        // Reschedule notification for next slot
-        const notifId = await todoNotificationService.scheduleReminder(current);
-        current.notificationId = notifId;
+        // Reschedule notification lookahead buffer for upcoming slots
+        const { primaryId, allIds } = await todoNotificationService.scheduleReminder(current);
+        current.notificationId = primaryId;
+        current.notificationIds = allIds;
         wasRecurringAdvanced = true;
       } else if (current.recurrence !== 'none' && current.reminderDateTime) {
         // Standard recurring task: advance reminder date to the next cycle
@@ -215,9 +248,10 @@ class TodoStorageService {
         current.updatedAt = nowIso;
         current.syncStatus = 'pending';
 
-        // Reschedule reminder notification for next cycle
-        const notifId = await todoNotificationService.scheduleReminder(current);
-        current.notificationId = notifId;
+        // Reschedule reminder notification lookahead buffer for upcoming cycles
+        const { primaryId, allIds } = await todoNotificationService.scheduleReminder(current);
+        current.notificationId = primaryId;
+        current.notificationIds = allIds;
         wasRecurringAdvanced = true;
       } else {
         // One-time task: mark complete and cancel notification
@@ -226,9 +260,10 @@ class TodoStorageService {
         current.updatedAt = nowIso;
         current.syncStatus = 'pending';
 
-        if (current.notificationId) {
-          await todoNotificationService.cancelReminder(current.notificationId);
+        if (current.notificationId || (current.notificationIds && current.notificationIds.length > 0)) {
+          await todoNotificationService.cancelReminder(current.notificationIds || current.notificationId);
           current.notificationId = null;
+          current.notificationIds = [];
         }
       }
     } else {
@@ -239,8 +274,9 @@ class TodoStorageService {
       current.syncStatus = 'pending';
 
       if (current.hasReminder && current.reminderDateTime) {
-        const notifId = await todoNotificationService.scheduleReminder(current);
-        current.notificationId = notifId;
+        const { primaryId, allIds } = await todoNotificationService.scheduleReminder(current);
+        current.notificationId = primaryId;
+        current.notificationIds = allIds;
       }
     }
 
@@ -270,9 +306,10 @@ class TodoStorageService {
     current.updatedAt = now.toISOString();
     current.syncStatus = 'pending';
 
-    // Reschedule device alarm for the new snoozed time
-    const notifId = await todoNotificationService.scheduleReminder(current);
-    current.notificationId = notifId;
+    // Reschedule device alarm lookahead buffer for the new snoozed time
+    const { primaryId, allIds } = await todoNotificationService.scheduleReminder(current);
+    current.notificationId = primaryId;
+    current.notificationIds = allIds;
 
     rawItems[index] = current;
     await this.writeRaw(rawItems);
@@ -290,8 +327,10 @@ class TodoStorageService {
     if (index === -1) return;
 
     const target = rawItems[index];
-    if (target.notificationId) {
-      await todoNotificationService.cancelReminder(target.notificationId);
+    if (target.notificationId || (target.notificationIds && target.notificationIds.length > 0)) {
+      await todoNotificationService.cancelReminder(target.notificationIds || target.notificationId);
+      target.notificationId = null;
+      target.notificationIds = [];
     }
 
     // Mark tombstone for cloud sync
@@ -350,6 +389,7 @@ class TodoStorageService {
               mergedMap.set(serverItem.id, {
                 ...serverItem,
                 notificationId: local.notificationId, // preserve device-local notification id
+                notificationIds: local.notificationIds,
                 syncStatus: 'synced',
               });
             }
@@ -361,9 +401,10 @@ class TodoStorageService {
         // Update notifications for active items that need reminders
         for (const item of mergedList) {
           if (!item.deletedAt && !item.isCompleted && item.hasReminder && item.reminderDateTime) {
-            if (!item.notificationId) {
-              const notifId = await todoNotificationService.scheduleReminder(item);
-              item.notificationId = notifId;
+            if (!item.notificationId || !item.notificationIds || item.notificationIds.length === 0) {
+              const { primaryId, allIds } = await todoNotificationService.scheduleReminder(item);
+              item.notificationId = primaryId;
+              item.notificationIds = allIds;
             }
           }
         }
